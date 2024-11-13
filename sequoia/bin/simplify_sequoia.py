@@ -76,17 +76,6 @@ def simplify_supersense(sent):
       token["frsemcor:noun"] = "Feeling" 
   return del_ssense_counter, mod_ssense_counter
 
-def simplify_morphology(sent):
-  for token in sent:
-    if token["feats"] :
-      if "Typo" in token["feats"]:
-        del token['feats']['Typo']
-      elif token["upos"] in ["ADV", "NUM"]:
-        if "Number" in token["feats"]:
-          del token['feats']['Number']
-        elif "Gender" in token['feats']:
-          del token['feats']['Gender']      
-
 #########################################
   
 def simplify_mwe_ne(sent):
@@ -159,7 +148,6 @@ with open(sys.argv[1], "r", encoding="UTF=8") as f:
     del_ssense_counter = del_ssense_counter + del_ssense_ci
     mod_ssense_counter = mod_ssense_counter + mod_ssense_ci
     del_ne_counter = del_ne_counter + simplify_mwe_ne(sent)
-    simplify_morphology(sent)
 #    subrel_counter = subrel_counter + remove_subrelations(sent)
     if is_projective(sent) : # Returns false to remove sentence
       if sent.metadata.get("global.columns", None): # Add header for new column
