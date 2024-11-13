@@ -4,6 +4,8 @@ Simplify Sequoia corpus for pedagogical purposes:
 - Remove all range tokens (e.g. "2-3 du" = "2 de" + "3 le"), keep only full tokens
   => Range tokens usually contain no annotation: they mark the presence of a contraction
   => The text may become strange to read, e.g. "L'ambassadrice de le Portugal à les Pays-Bas"
+- Column FEATS (TP3)
+  - Remove extremely rare features appearing only once with a given UPOS
 - Column FRSEMCOR:NOUN (TP4)
   - Remove all supersense annotations for multiword units 
     => keeping multiwords would make data preparation unnecessarily complex
@@ -77,6 +79,19 @@ def simplify_supersense(sent):
   return del_ssense_counter, mod_ssense_counter
 
 #########################################
+
+def simplify_morphology(sent):
+  for token in sent:
+    if token["feats"] :
+      if "Typo" in token["feats"]:
+        del token['feats']['Typo']
+      elif token["upos"] in ["ADV", "NUM"]:
+        if "Number" in token["feats"]:
+          del token['feats']['Number']
+        elif "Gender" in token['feats']:
+          del token['feats']['Gender']      
+
+#########################################
   
 def simplify_mwe_ne(sent):
   ne_ind = 1 # Start new named entities at index 1 in new column
@@ -148,6 +163,7 @@ with open(sys.argv[1], "r", encoding="UTF=8") as f:
     del_ssense_counter = del_ssense_counter + del_ssense_ci
     mod_ssense_counter = mod_ssense_counter + mod_ssense_ci
     del_ne_counter = del_ne_counter + simplify_mwe_ne(sent)
+    simplify_morphology(sent)
 #    subrel_counter = subrel_counter + remove_subrelations(sent)
     if is_projective(sent) : # Returns false to remove sentence
       if sent.metadata.get("global.columns", None): # Add header for new column
