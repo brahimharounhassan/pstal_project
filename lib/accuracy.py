@@ -224,5 +224,5 @@ if __name__ == "__main__":
             acc['correct_oov_las'] += 1
         acc['total_tokens'] += 1
         if args.name_tag == 'feats':
-          tp_count_feats(tok_gold, tok_pred, prf)
+          tp_count_feats(tok_pred, tok_gold, prf)
   print_results(pred_corpus.name(), args, acc, prf, args.name_tag == "head")
