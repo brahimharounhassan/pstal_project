@@ -157,7 +157,7 @@ def print_results(pred_corpus_name, args, acc, prf, parsing=False):
     accuracy_las = (acc['correct_tokens_las'] / acc['total_tokens']) * 100
     print("LAS on all {}: {:0.2f} ({:5}/{:5})".format(args.name_tag, 
           accuracy_las, acc['correct_tokens_las'], acc['total_tokens']))
-  if args.train_filename :
+  if args.train_filename and acc['total_oov']:
     accuracy_oov = (acc['correct_oov'] / acc['total_oov']) * 100
     print("{} on OOV {}: {:0.2f} ({:5}/{:5})".format(acc_name, args.name_tag, 
           accuracy_oov, acc['correct_oov'], acc['total_oov']))
