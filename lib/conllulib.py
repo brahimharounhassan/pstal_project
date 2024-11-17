@@ -195,7 +195,7 @@ class CoNLLUReader(object):
 
   ###############################
 
-  def to_int_and_vocab(self, col_name_dict, extra_cols_dict={}): 
+  def to_int_and_vocab(self, col_name_dict, extra_cols_dict={}, chars=False): 
     """
     Transforms open `self.infile` into lists of integer indices and associated
     vocabularies. Vocabularies are created on the fly, according to the file 
@@ -210,6 +210,7 @@ class CoNLLUReader(object):
     extra_cols_dict = {"head":int}
     means that column "head" will also be encoded, but with no vocabulary 
     associated. Instead, column values are directly encoded with function int.
+    `chars` will build a character vocabulary instead of words.
     Returns a tuple of 2 dicts, `int_list` and `vocab`, with same keys as those  
     in `col_name_dict` and `extra_cols_dict`, and results as values (list of 
     integers and vocabulary dict, respectively)\
@@ -228,7 +229,11 @@ class CoNLLUReader(object):
     for s in self.readConllu():
       # IMPORTANT : only works if "col_name" is the same as in lambda function definition!
       for col_name in col_name_dict.keys():
-        int_list[col_name].append([vocab[col_name][tok[col_name]] for tok in s]) 
+        if chars :
+          for tok in s :
+            int_list[col_name].append([vocab[col_name][c] for c in tok[col_name]]) 
+        else:        
+          int_list[col_name].append([vocab[col_name][tok[col_name]] for tok in s]) 
       for col_name, col_fct in extra_cols_dict.items():
         int_list[col_name].append(list(map(col_fct, [tok[col_name] for tok in s])))
     # vocabs cannot be saved if they have lambda function: erase default_factory
