@@ -47,13 +47,33 @@ model.print_gradients()
 # ['a.grad=4.0', 'b.grad=3.0']
 
 ################################################################################
-# Conv1D examples
-
+# torch.gather examples
 import torch
 
-mat = torch.rand(3,5)
-conv = nn.Conv1d(in_channels=3, out_channels=2, kernel_size=3)
-print(conv(mat).shape)
+a = torch.tensor([[1., 2., 3.], [4., 5., 6.]])
+mask = torch.tensor([[1],[1]])
+print(torch.gather(a, 1, mask))
+# tensor([[2.], 
+#         [5.]])
+print(torch.gather(a, 0, mask))
+# tensor([[4.], 
+#         [4.]])
+mask = torch.tensor([[1,0,1],[0,1,0]])
+print(torch.gather(a, 0, mask))
+#tensor([[4., 5., 3.],
+#        [1., 5., 6.]])
+mask = torch.tensor([[2,1],[0,2]])
+print(torch.gather(a, 1, mask))
+#tensor([[3., 2.],
+#        [4., 6.]])
+
+################################################################################
+# Conv1D examples
+
+
+#mat = torch.rand(3,5)
+#conv = nn.Conv1d(in_channels=3, out_channels=2, kernel_size=3)
+#print(conv(mat).shape)
 
 #conv_res = self.char_conv[str(k_s)](char_embs[:,word_i].transpose(1,2))
 #pool_res = nn.functional.max_pool1d(conv_res, conv_res.shape[-1])
