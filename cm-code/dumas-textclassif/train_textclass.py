@@ -10,14 +10,15 @@ class CNNClassifier(nn.Module):
   def __init__(self, d_embed, d_hidden, d_in, d_out):
     super().__init__() 
     self.embed = nn.Embedding(d_in, d_embed, padding_idx=0)
-    self.conv = nn.Conv1d(d_embed, d_hidden, kernel_size=5)    
+    self.cnn = nn.Conv1d(d_embed, d_hidden, kernel_size=5)    
     self.dropout = nn.Dropout(0.1)
+    self.nonlin = torch.nn.ReLU()
     self.decision = nn.Linear(d_hidden, d_out)      
     
   def forward(self, idx_words):
-    embedded = self.embed(idx_words)  
-    conved = self.conv(embedded.transpose(2,1))  
-    hidden = nn.functional.max_pool1d(conved, conved.shape[-1])
+    emb = self.embed(idx_words)  
+    conv = self.nonlin(self.cnn(emb.transpose(2,1)))
+    hidden = nn.functional.max_pool1d(conv, conv.shape[-1])
     return self.decision(self.dropout(hidden.squeeze()))   
 
 ################################################################################

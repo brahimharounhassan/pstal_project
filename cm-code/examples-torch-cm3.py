@@ -48,33 +48,34 @@ model.print_gradients()
 
 ################################################################################
 # torch.gather examples
+
 import torch
 
 a = torch.tensor([[1., 2., 3.], [4., 5., 6.]])
-mask = torch.tensor([[1],[1]])
-print(torch.gather(a, 1, mask))
-# tensor([[2.], 
-#         [5.]])
-print(torch.gather(a, 0, mask))
-# tensor([[4.], 
-#         [4.]])
-mask = torch.tensor([[1,0,1],[0,1,0]])
-print(torch.gather(a, 0, mask))
-#tensor([[4., 5., 3.],
-#        [1., 5., 6.]])
-mask = torch.tensor([[2,1],[0,2]])
-print(torch.gather(a, 1, mask))
-#tensor([[3., 2.],
-#        [4., 6.]])
+mask = torch.tensor([[1], [1]])
+print(a.gather(dim=1, index=mask))
+# tensor([[2.], [5.]])
+print(a.gather(0, mask))
+# tensor([[4.], [4.]])
+mask = torch.tensor([[1,0,1], [0,1,0]])
+print(a.gather(0, mask))
+# tensor([[4., 2., 6.], [1., 5., 3.]])
+mask = torch.tensor([[2,1], [0,2]])
+print(a.gather(1, mask))
+#tensor([[3., 2.], [4., 6.]])
 
 ################################################################################
 # Conv1D examples
 
+mat = torch.rand(3, 8)
+cnn = nn.Conv1d(in_channels=3, out_channels=1, kernel_size=2)
+print(cnn(mat).shape)
+# torch.Size([1, 7])
+cnn = nn.Conv1d(in_channels=3, out_channels=5, kernel_size=3)
+print(cnn(mat).shape)
+# torch.Size([5, 6])
+cnn = nn.Conv1d(in_channels=2, out_channels=5, kernel_size=3)
+print(cnn(mat).shape)
+# Error: expected input to have 2 channels, but got 3 channels instead
 
-#mat = torch.rand(3,5)
-#conv = nn.Conv1d(in_channels=3, out_channels=2, kernel_size=3)
-#print(conv(mat).shape)
-
-#conv_res = self.char_conv[str(k_s)](char_embs[:,word_i].transpose(1,2))
-#pool_res = nn.functional.max_pool1d(conv_res, conv_res.shape[-1])
-
+################################################################################
