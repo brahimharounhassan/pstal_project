@@ -6,8 +6,8 @@ from transformers import AutoModel, AutoTokenizer
 name  = 'almanach/camembert-base'
 #sent  = "Des poids lourds et engins en feu \
 #         dans une entreprise en Vendée ."
-#sent = "La gare routière attend toujours ses illuminations ."
-sent = "Quelle surprise ! Arturo a la covid"
+sent = "La gare routière attend toujours ses illuminations ."
+#sent = "Quelle surprise ! Arturo a la covid"
 tok   = AutoTokenizer.from_pretrained(name)
 model = AutoModel.from_pretrained(name)
 

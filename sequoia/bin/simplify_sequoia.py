@@ -134,10 +134,10 @@ def is_projective(sent):
     if dep_id > head_id :
       start = head_id
       end = dep_id
-    for token_i in range(start,end-1): # sent is 0-indexed, ID is 1-indexed
-      if sent[token_i]["head"] < start or sent[token_i]["head"] > end :               
-        return False            
-  return True     
+    for token_i in range(start, end - 1): # sent is 0-indexed, ID is 1-indexed
+      if sent[token_i]["head"] < start or sent[token_i]["head"] > end :
+        return False
+  return True
 
 #########################################
 
@@ -150,14 +150,14 @@ def remove_subrelations(sent):
 #########################################
 
 if len(sys.argv) != 2:
-  print('Usage: {} <input_corpus.conllu>'.format(sys.argv[0]), file=sys.stderr)  
+  print('Usage: {} <input_corpus.conllu>'.format(sys.argv[0]), file=sys.stderr)
   exit(-1)
 
 with open(sys.argv[1], "r", encoding="UTF=8") as f:
   np_counter = range_counter = del_ne_counter = 0
   del_ssense_counter = mod_ssense_counter = 0 #subrel_counter = 0
-  np_ids = []  
-  for sent in conllu.parse_incr(f):    
+  np_ids = []
+  for sent in conllu.parse_incr(f):
     range_counter = range_counter + remove_range_tokens(sent)
     del_ssense_ci, mod_ssense_ci = simplify_supersense(sent)
     del_ssense_counter = del_ssense_counter + del_ssense_ci
@@ -171,7 +171,7 @@ with open(sys.argv[1], "r", encoding="UTF=8") as f:
       print(sent.serialize(), end="")
     else:
       np_counter += 1
-      np_ids.append(sent.metadata["sent_id"])
+      np_ids.append((sent.metadata["sent_id"],len(sent)))
             
 print( "{} range tokens removed.\n".format(range_counter), file=sys.stderr)
 
@@ -182,4 +182,4 @@ print( "{} supersense tags modified (complex operators).\n".format(mod_ssense_co
 
 #print( "{} subrelations removed from deprel.".format(subrel_counter), file=sys.stderr)
 print( "{} non-projective sentences removed:".format(np_counter), file=sys.stderr)
-print(", ".join(np_ids), file=sys.stderr)
+print("\n".join([f"{np_id} -> {lgth}" for (np_id, lgth) in np_ids]), file=sys.stderr)

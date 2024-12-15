@@ -538,8 +538,8 @@ class TransBasedConfig(object):
     `next_act` is a string among "SHIFT", "RIGHT-ARC-X" or "LEFT-ARC-X" where
     "X" is the name of any valid syntactic relation label (deprel).
     Returns a new syntactic relation added by the action, or None for "SHIFT"        
-    Returned relation is a triple (mod, head, deprel) with modifier, head, and 
-    deprel label if `add_deprel=True` (default), or a pair (mod, head) if 
+    Returned relation is a triple (dep, head, deprel) with dependent, head, and 
+    deprel label if `add_deprel=True` (default), or a pair (dep, head) if 
     `add_deprel=False`.
     """    
     if next_act == "SHIFT":

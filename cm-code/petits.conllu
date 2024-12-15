@@ -1,4 +1,5 @@
-# text = Les petits ruisseaux font les grandes rivières .
+# global.columns = ID FORM LEMMA UPOS XPOS FEATS HEAD DEPREL DEPS MISC
+# text = Les petits ruisseaux font les grandes rivières.
 1	Les	le	DET	_	Definite=Def|Number=Plur|PronType=Art	3	det	_	_
 2	petits	petit	ADJ	_	Gender=Masc|Number=Plur	3	amod	_	_
 3	ruisseaux	ruisseau	NOUN	_	Gender=Masc|Number=Plur	4	nsubj	_	_
