@@ -258,12 +258,12 @@ class CoNLLUReader(object):
     unk_toks = {}
     for col_name in col_names:  
       int_list[col_name] = []
-      unk_toks[col_name] = vocab[col_name].get(unk_token,None)
+      unk_toks[col_name] = vocab[col_name].get(unk_token, 0) # replaced None by 0 20251031
     for col_name in extra_cols_dict.keys() :
       int_list[col_name] = []
     for s in self.readConllu():
       for col_name in col_names:
-        id_getter = lambda v,t: v[col_name].get(t[col_name],unk_toks[col_name])
+        id_getter = lambda v,t: v[col_name].get(t[col_name], unk_toks[col_name])
         int_list[col_name].append([id_getter(vocab,tok) for tok in s])   
       for col_name, col_fct in extra_cols_dict.items():
         int_list[col_name].append(list(map(col_fct, [tok[col_name] for tok in s])))
