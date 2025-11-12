@@ -9,11 +9,12 @@ import re
 
 ################################################################################
 
-parser = argparse.ArgumentParser(description="Calculates the accuracy of a \
-prediction with respect to the gold file. By default, uses UPOS, but this can \
-be configured with option --tagcolumn. For columns `feats` and `parseme:ne`, \
-calculates also the precision, recall, F-score. For columns `head` and \
-`deprel`, calculates LAS and UAS.",
+parser = argparse.ArgumentParser(description="Evaluates the quality of a \
+prediction with respect to the gold file. By default, calculates UPOS accuracy,\
+but this can be configured with option --tagcolumn. For columns `feats` and \
+`parseme:ne`, calculates the precision, recall, F-score. For columns `head` and \
+`deprel`, calculates LAS and UAS. The metric is chosen automatically based on \
+the tag column name.",
 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('-D', "--debug", action="store_true", dest="DEBUG_FLAG", 
