@@ -9,30 +9,29 @@ class DummyMTL (nn.Module):
   
   def __init__(self):
     super().__init__() 
-    self.a = nn.Parameter(tensor([2.],requires_grad=True))
-    self.b = nn.Parameter(tensor([3.],requires_grad=True))
+    self.a = tensor([2.], requires_grad=True)
+    self.b = tensor([3.], requires_grad=True)
     
   def forward(self):    
     c = self.a + self.b # output of task 1 (sum)
     d = self.a * self.b # output of task 2 (product)
     return (c, d)       # Two "task" outputs
     
-  def print_gradients(self):    
-    print([f"{n}.grad={p.grad and p.grad.item()}" \
-           for (n, p) in self.named_parameters()])
-
+  def print_gradients(self): # print [a.grad, b.grad]
+    print([p.grad and p.grad.item() for p in [self.a, self.b]])
+      
 ################################################################################
     
 model = DummyMTL()
 (c,d) = model()  # calls forward   
 model.print_gradients()
-# ['a.grad=None', 'b.grad=None']
+# [None, None]
 c.backward() 
 model.print_gradients()
-# ['a.grad=1.0', 'b.grad=1.0']
+# [1.0, 1.0]
 d.backward()
 model.print_gradients()
-# ['a.grad=4.0', 'b.grad=3.0']
+# [4.0, 3.0]
 
 ################################################################################
 
@@ -40,11 +39,11 @@ model.print_gradients()
 model = DummyMTL()
 (c,d) = model()  # calls forward   
 model.print_gradients()
-# ['a.grad=None', 'b.grad=None']
+# [None, None]
 loss = c + d # combined during training
 loss.backward()
 model.print_gradients()
-# ['a.grad=4.0', 'b.grad=3.0']
+# [4.0, 3.0]
 
 ################################################################################
 # torch.gather examples
