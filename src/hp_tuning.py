@@ -3,7 +3,7 @@ from pathlib import Path
 import time
 
 # Add workspace root to Python path
-workspace_root = Path(__file__).resolve().parent.parent
+workspace_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(workspace_root))
 
 from transformers import (AutoConfig, AutoModelForTokenClassification, AutoTokenizer)
@@ -168,10 +168,14 @@ def train_eval_model(
       raise
     finally:
       # memory cleanup
-      del model, optimizer
+      if 'model' in locals():
+        del model
+      if 'optimizer' in locals():
+        del optimizer
       if 'scheduler' in locals():
         del scheduler
-      torch.cuda.empty_cache()
+      if torch.cuda.is_available():
+        torch.cuda.empty_cache()
       import gc; gc.collect()
 
 
@@ -227,7 +231,7 @@ if __name__ == "__main__":
             )
         )
 
-        logger.info(f"Obtuna research start - {N_TRIALS_TUNER} trials")
+        logger.info(f"Optuna optimization start- {N_TRIALS_TUNER} trials")
         optuna_start_time = time.time()
         
         study.optimize(
@@ -244,7 +248,7 @@ if __name__ == "__main__":
         )
 
         optuna_elapsed = time.time() - optuna_start_time
-        logger.info(f"Otuna research ended - time : {format_time(optuna_elapsed)}")
+        logger.info(f"Optuna optimization ended : Time: {format_time(optuna_elapsed)}")
         
         best_hyperparameters = study.best_params
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
