@@ -16,7 +16,8 @@ dataset:
 model_config:
   model_name: "almanach/camembert-base"
   n_epochs: 50
-  patience: 8
+  patience: 10
+  accumulation_steps: 4
 
 tuning_config:
   n_trials: 30

@@ -50,35 +50,57 @@ def fit(model: SuperSenseClassifier, train_loader: DataLoader, loss_fn, optimize
     
     return total_loss / len(train_loader)
 
-def train_epochs(model: SuperSenseClassifier, train_loader: DataLoader, dev_loader: DataLoader, epochs: int, lr: float, device: str)-> SuperSenseClassifier:
-    # Loss and optimizer
+
+def train_epochs(
+    model: SuperSenseClassifier,
+    train_loader: DataLoader,
+    dev_loader: DataLoader,
+    epochs: int,
+    lr: float,
+    device: str
+) -> SuperSenseClassifier:
+
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    
-    # Training loop
-    training_start_time = time.time()
-    logger.info(f"Classifier train start - {epochs} epochs")
-    logger.info("Starting training")
+    optimizer = optim.AdamW(
+        model.parameters(),
+        lr=lr,
+        weight_decay=1e-4
+    )
+
     best_acc = 0.0
-    train_loss = 0.0
+    patience = 3
+    no_improve = 0
+
+    training_start_time = time.time()
+    logger.info(f"Classifier training started ({epochs} epochs)")
+
     for epoch in range(epochs):
         train_loss = fit(model, train_loader, loss_fn, optimizer, device)
         dev_loss, dev_acc = evaluate(model, dev_loader, loss_fn, device)
-        
-        logger.info(f"Epoch {epoch+1}/{epochs} | "
-                   f"Train Loss: {train_loss:.4f} | "
-                   f"Dev Loss: {dev_loss:.4f} | "
-                   f"Dev Acc: {dev_acc:.4f}")
-        
+
+        logger.info(
+            f"Epoch {epoch+1}/{epochs} | "
+            f"Train Loss: {train_loss:.4f} | "
+            f"Dev Loss: {dev_loss:.4f} | "
+            f"Dev Acc: {dev_acc:.4f}"
+        )
+
         if dev_acc > best_acc:
             best_acc = dev_acc
+            no_improve = 0
             logger.info(f"New best accuracy: {best_acc:.4f}")
+        else:
+            no_improve += 1
+            if no_improve >= patience:
+                logger.info("Early stopping triggered")
+                break
 
-    training_elapsed = time.time() - training_start_time
-    logger.info(f"Classier train ended - Time: {format_time(training_elapsed)}")
+    elapsed = time.time() - training_start_time
+    logger.info(f"Training finished in {format_time(elapsed)}")
     logger.info(f"Best dev accuracy: {best_acc:.4f}")
 
     return model
+
 
 def evaluate(model: SuperSenseClassifier, dev_loader: DataLoader, loss_fn: nn.CrossEntropyLoss, device: str) -> tuple[float, float]:
     """

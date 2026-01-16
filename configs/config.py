@@ -7,6 +7,7 @@ class ModelConfig:
     model_name: str
     n_epochs: int
     patience: int
+    accumulation_steps: int = 1
     _batch_size: int = None
     _device: str = None
 
@@ -76,6 +77,7 @@ config = load_config(
 
 MODEL_NAME = config.model.model_name
 PATIENCE = config.model.patience
+ACCUMULATION_STEPS = config.model.accumulation_steps
 DEVICE = config.model.device
 BATCH_SIZE = config.model.batch_size
 N_EPOCHS = config.model.n_epochs

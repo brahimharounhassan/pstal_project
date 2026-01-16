@@ -62,3 +62,36 @@ Aix Marseille University and Centrale Mediterranée.
     --tagcolumn frsemcor:noun \
     --train data/sequoia/sequoia-ud.parseme.frsemcor.simple.train \
     --upos-filter NOUN PROPN NUM
+
+
+Modèle LoRA fine-tuné (figé : Le backbone (CamemBERT original) est gelé seules les petites matrices LoRA apprennent)
+          ↓
+Extraction d'embeddings contextuels
+          ↓
+MLP SuperSenseClassifier (entraînable)
+          ↓
+Prédiction supersense
+
+
+
+Phase 1 - Fine-tuning LoRA (hp_tuning.py / fine_tuning.py):
+┌─────────────────────────────────────────────────┐
+│ CamemBERT backbone (gelé)                       │
+│         +                                       │
+│ Matrices LoRA (entraînables)                    │  ← Tâche: POS tagging
+│         ↓                                       │     (25 labels UPOS)
+│ Classifier head temporaire (TOKEN_CLS)          │
+└─────────────────────────────────────────────────┘
+           Sauvegarde du modèle fine-tuné
+                      ↓
+Phase 2 - Extraction + MLP (train_finetuned.py):
+┌────────────────────────────────────────────────┐
+│ Modèle LoRA fine-tuné (FIGÉ - aucun gradient)  │
+│         ↓                                      │
+│ Extraction embeddings contextuels (768D)       │  ← Mode: eval(), torch.no_grad()
+│         ↓                                      │
+│ MLP SuperSenseClassifier (ENTRAÎNABLE)         │  ← Tâche: Super-sense
+│   - Linear(768 → 256)                          │     (24 labels)
+│   - ReLU + Dropout                             │
+│   - Linear(256 → 24)                           │
+└────────────────────────────────────────────────┘

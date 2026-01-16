@@ -1,14 +1,21 @@
-import sys
+"""
+Fine-tuning script with LoRA for super-sense classification.
+"""
+
 from pathlib import Path
+import sys
 import time
+import os
+import glob
+
 workspace_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(workspace_root))
 
-from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer
+from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer, get_linear_schedule_with_warmup
 from peft import LoraConfig, get_peft_model
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.amp import GradScaler, autocast
+from sklearn.metrics import f1_score, accuracy_score, classification_report
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datetime import datetime
@@ -17,10 +24,9 @@ import numpy as np
 
 from src.utils import TuningDataPreparation, setup_training_logger
 from configs.config import *
-import glob
-import json
 
 tqdm.pandas()
+
 
 def format_time(seconds):
     """Format seconds into readable time string."""
@@ -37,17 +43,23 @@ def format_time(seconds):
 
 logger, metrics_file = setup_training_logger(log_dir=LOG_PATH)
 
+
 def train_final_model(
     train_loader: DataLoader,
     dev_loader: DataLoader,
     num_labels: int,
     best_hyperparameters: dict,
     model_name: str,
-    epochs: int=30,
-    device: str="cuda",
-    accumulation_steps: int=1,
-    metrics_file: str=None
-    ):
+    id2label: dict,
+    epochs: int = 30,
+    device: str = "cuda",
+    accumulation_steps: int = 1,
+    metrics_file: str = None,
+    class_weights: torch.Tensor = None
+):
+    """
+    Train final model with best hyperparameters.
+    """
 
     # Load model config
     config = AutoConfig.from_pretrained(model_name)
@@ -59,15 +71,26 @@ def train_final_model(
     # LoRA config
     lora_config = LoraConfig(
         r=best_hyperparameters['r'],
-        lora_alpha=best_hyperparameters['lora_alpha'],
+        lora_alpha=best_hyperparameters.get('lora_alpha', best_hyperparameters['r'] * 2),
         target_modules=["query", "value", "key"],
         lora_dropout=best_hyperparameters['lora_dropout'],
         bias="none",
         task_type="TOKEN_CLS",
-        use_dora=best_hyperparameters['use_dora']
+        use_dora=best_hyperparameters.get('use_dora', False)
     )
+
     lora_model = get_peft_model(base_model, lora_config)
-    lora_model.gradient_checkpointing_enable()  # to save memory
+    
+    # Freeze backbone params for LoRA
+    for name, param in lora_model.named_parameters():
+        if "lora_" not in name:
+            param.requires_grad = False
+
+    trainable = sum(p.numel() for p in lora_model.parameters() if p.requires_grad)
+    total = sum(p.numel() for p in lora_model.parameters())
+
+    logger.info(f"Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)")
+
     lora_model.to(device)
 
     # Optimizer
@@ -76,155 +99,259 @@ def train_final_model(
         lr=best_hyperparameters['lr'],
         weight_decay=best_hyperparameters.get('weight_decay', 1e-4),
         eps=1e-8
-        )
+    )
 
-    # Learning rate scheduler
-    total_steps = len(train_loader) * epochs
+    # Learning rate scheduler with warmup
+    total_steps = len(train_loader) * epochs // accumulation_steps
     warmup_steps = int(total_steps * best_hyperparameters.get('warmup_ratio', 0.1))
 
-    scheduler = ReduceLROnPlateau(
+    scheduler = get_linear_schedule_with_warmup(
         optimizer,
-        mode='min',
-        factor=0.5,
-        patience=2
-        # verbose=True
-        )
+        num_warmup_steps=warmup_steps,
+        num_training_steps=total_steps
+    )
 
     # Mixed precision
     scaler = GradScaler()
+    
+    # Move class weights to device if provided
+    if class_weights is not None:
+        class_weights = class_weights.to(device)
+        logger.info(f"Using class weights for imbalanced data")
 
     # Early stopping params
-    patience = 5
-    best_val_loss = float('inf')
+    patience = PATIENCE
+    best_val_f1_macro = 0.0
     epochs_no_improve = 0
     train_losses = []
     val_losses = []
+    val_f1_scores_macro = []
+    val_f1_scores_weighted = []
+    val_accuracies = []
     learning_rates = []
     best_model_fname = None
+    best_epoch = 0
     
     training_start_time = time.time()
-    logger.info(f"Finetuning start - {epochs} epochs max")
+    logger.info(f"Fine-tuning started - {epochs} epochs max")
 
     for epoch in range(epochs):
-      lora_model.train()
-      total_loss = 0.0
-      optimizer.zero_grad()
+        lora_model.train()
+        total_loss = 0.0
+        optimizer.zero_grad()
 
-      for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch +1}")):
-        input_ids, attention_mask, labels = [x.to(device) for x in batch]
+        for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")):
+            input_ids, attention_mask, labels = [x.to(device) for x in batch]
 
-        with autocast(device_type=device):
-          outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-          loss = outputs.loss / accumulation_steps
+            with autocast(device_type=device):
+                outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                
+                # Apply class weights
+                if class_weights is not None:
+                    logits = outputs.logits
+                    loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
+                    loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
+                else:
+                    loss = outputs.loss
+                
+                loss = loss / accumulation_steps
 
-        scaler.scale(loss).backward()
+            scaler.scale(loss).backward()
 
-        if (step + 1) % accumulation_steps == 0:
-          scaler.unscale_(optimizer)
-          torch.nn.utils.clip_grad_norm_(lora_model.parameters(), max_norm=1.0)
-          scaler.step(optimizer)
-          scaler.update()
-          optimizer.zero_grad()
+            if (step + 1) % accumulation_steps == 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(lora_model.parameters(), max_norm=1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                scheduler.step()
+                optimizer.zero_grad()
 
-        total_loss += loss.item() * accumulation_steps
+            total_loss += loss.item() * accumulation_steps
 
-      avg_train_loss = total_loss / len(train_loader)
-      train_losses.append(avg_train_loss)
+        avg_train_loss = total_loss / len(train_loader)
+        train_losses.append(avg_train_loss)
 
-      learning_rates.append(optimizer.param_groups[0]['lr'])
+        learning_rates.append(optimizer.param_groups[0]['lr'])
 
-      # Validation
-      lora_model.eval()
-      val_loss_total = 0.0
-      with torch.no_grad():
-        for batch in tqdm(dev_loader, desc="Validation"):
-          input_ids, attention_mask, labels = [x.to(device) for x in batch]
-          with autocast(device_type=device):
-            outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-          val_loss_total += outputs.loss.item()
-
-      avg_val_loss = val_loss_total / len(dev_loader)
-      val_losses.append(avg_val_loss)
-
-      logger.info(f"Epoch {epoch+1} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | LR: {optimizer.param_groups[0]['lr']:.2e}")
-
-      # Update scheduler
-      scheduler.step(avg_val_loss)
-
-      # Early stopping check
-      if avg_val_loss < best_val_loss:
-        best_val_loss = avg_val_loss
-        epochs_no_improve = 0
+        # Validation
+        lora_model.eval()
+        val_loss_total = 0.0
+        all_predictions = []
+        all_labels = []
         
-        # Delete old checkpoint to save space
-        if best_model_fname is not None and best_model_fname.exists():
-            best_model_fname.unlink()
-            logger.info(f"Deleted old checkpoint to save space")
-        
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        best_model_fname = CHECKPOINT_PATH / f"best_model_epoch_{epoch+1}_{timestamp}.pt"
-        torch.save({
-            'epoch': epoch+1,
-            'model_state_dict': lora_model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'val_loss': avg_val_loss,
-            'hyperparameters': best_hyperparameters
-        }, best_model_fname)
-        logger.info(f"Saved new best checkpoint: {best_model_fname.name}")
+        with torch.no_grad():
+            for batch in tqdm(dev_loader, desc="Validation", leave=False):
+                input_ids, attention_mask, labels = [x.to(device) for x in batch]
+                
+                with autocast(device_type=device):
+                    outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                    
+                    # Compute loss with class weights
+                    if class_weights is not None:
+                        logits = outputs.logits
+                        loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
+                        loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
+                    else:
+                        loss = outputs.loss
+                
+                val_loss_total += loss.item()
+                
+                # Get predictions
+                predictions = torch.argmax(outputs.logits, dim=-1)
+                
+                # Flatten and filter out ignored indices (-100)
+                active_labels = labels.view(-1)
+                active_predictions = predictions.view(-1)
+                mask = active_labels != -100
+                
+                all_predictions.extend(active_predictions[mask].cpu().numpy())
+                all_labels.extend(active_labels[mask].cpu().numpy())
 
-      else:
-        epochs_no_improve += 1
-        if epochs_no_improve >= patience:
-          training_elapsed = time.time() - training_start_time
-          logger.info(f"Early stopping at epoch {epoch+1}")
-          logger.info(f"Finetuning end - at time: {format_time(training_elapsed)}")
-          break
+        avg_val_loss = val_loss_total / len(dev_loader)
+        val_losses.append(avg_val_loss)
+        
+        # Calculate metrics - ADDED macro F1
+        val_accuracy = accuracy_score(all_labels, all_predictions)
+        val_f1_macro = f1_score(all_labels, all_predictions, average='macro', zero_division=0)
+        val_f1_weighted = f1_score(all_labels, all_predictions, average='weighted', zero_division=0)
+        
+        val_f1_scores_macro.append(val_f1_macro)
+        val_f1_scores_weighted.append(val_f1_weighted)
+        val_accuracies.append(val_accuracy)
+
+        logger.info(
+            f"Epoch {epoch+1}/{epochs} | "
+            f"Train Loss: {avg_train_loss:.4f} | "
+            f"Val Loss: {avg_val_loss:.4f} | "
+            f"Val F1 Macro: {val_f1_macro:.4f} | "
+            f"Val F1 Weighted: {val_f1_weighted:.4f} | "
+            f"Val Acc: {val_accuracy:.4f} | "
+            f"LR: {optimizer.param_groups[0]['lr']:.2e}"
+        )
+        
+        # Log metrics to CSV
+        if metrics_file:
+            with open(metrics_file, 'a') as f:
+                f.write(
+                    f"{epoch+1},{avg_train_loss:.6f},{avg_val_loss:.6f},"
+                    f"{val_f1_macro:.6f},{val_f1_weighted:.6f},{val_accuracy:.6f},"
+                    f"{optimizer.param_groups[0]['lr']:.8e},{datetime.now().isoformat()}\n"
+                )
+
+        # Early stopping check : based on macro F1
+        if val_f1_macro > best_val_f1_macro:
+            best_val_f1_macro = val_f1_macro
+            best_epoch = epoch + 1
+            epochs_no_improve = 0
+            
+            # Delete old checkpoint to save space
+            if best_model_fname is not None and best_model_fname.exists():
+                best_model_fname.unlink()
+                logger.info(f"Deleted old checkpoint")
+            
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            best_model_fname = CHECKPOINT_PATH / f"best_model_epoch_{epoch+1}_f1macro_{val_f1_macro:.4f}_{timestamp}.pt"
+            
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': lora_model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': avg_val_loss,
+                'val_f1_macro': val_f1_macro,
+                'val_f1_weighted': val_f1_weighted,
+                'val_accuracy': val_accuracy,
+                'hyperparameters': best_hyperparameters,
+                'all_predictions': all_predictions,
+                'all_labels': all_labels
+            }, best_model_fname)
+            
+            logger.info(f"Saved best checkpoint: {best_model_fname.name}")
+            
+            # Print classification report for best model
+            try:
+                target_names = [id2label[i] for i in sorted(set(all_labels))]
+                report = classification_report(
+                    all_labels, 
+                    all_predictions, 
+                    target_names=target_names,
+                    zero_division=0,
+                    digits=4
+                )
+                logger.info(f"\nClassification Report (Best Epoch {epoch+1}):\n{report}")
+            except Exception as e:
+                logger.warning(f"Could not generate classification report: {e}")
+        else:
+            epochs_no_improve += 1
+            logger.info(f"No improvement for {epochs_no_improve}/{patience} epochs")
+            
+            if epochs_no_improve >= patience:
+                logger.info(f"Early stopping triggered at epoch {epoch+1}")
+                break
 
     # Save metrics
     training_elapsed = time.time() - training_start_time
     if epochs_no_improve < patience:
-        logger.info(f"Finetuning end - at time: {format_time(training_elapsed)}")
+        logger.info(f"Training completed all {epochs} epochs")
+    logger.info(f"Training time: {format_time(training_elapsed)}")
+    logger.info(f"Best epoch: {best_epoch}")
+    logger.info(f"Best F1 Macro: {best_val_f1_macro:.4f}")
     
     np.save(OUTPUT_PATH / "train_losses.npy", np.array(train_losses))
     np.save(OUTPUT_PATH / "val_losses.npy", np.array(val_losses))
+    np.save(OUTPUT_PATH / "val_f1_scores_macro.npy", np.array(val_f1_scores_macro))
+    np.save(OUTPUT_PATH / "val_f1_scores_weighted.npy", np.array(val_f1_scores_weighted))
+    np.save(OUTPUT_PATH / "val_accuracies.npy", np.array(val_accuracies))
     np.save(OUTPUT_PATH / "learning_rates.npy", np.array(learning_rates))
 
     # Load best model
-    checkpoint = torch.load(best_model_fname)
-    lora_model.load_state_dict(checkpoint['model_state_dict'])
+    if best_model_fname and best_model_fname.exists():
+        checkpoint = torch.load(best_model_fname, map_location=device)
+        lora_model.load_state_dict(checkpoint['model_state_dict'])
+        logger.info(f"Loaded best model from epoch {checkpoint['epoch']}")
+    else:
+        logger.warning("No best model checkpoint found, using final model state")
 
-    # Load best weights
     return lora_model
+
 
 if __name__ == "__main__":
 
-    # Set up device
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     
     train_data_prep = TuningDataPreparation(
-    in_file=DATA_TRAIN,
-    full_file=DATA_FULL
+        in_file=DATA_TRAIN,
+        full_file=DATA_FULL,
+        target_upos=TARGET_UPOS
     )
 
     dev_data_prep = TuningDataPreparation(
         in_file=DATA_DEV,
-        full_file=DATA_FULL
-        )
+        full_file=DATA_FULL,
+        target_upos=TARGET_UPOS
+    )
 
-    print("All supersense:", train_data_prep.sense_values)
-    print(train_data_prep.id2label)
+    logger.info(f"Number of unique supersenses: {len(train_data_prep.sense_values)}")
+    logger.info(f"Number of labels: {len(train_data_prep.label2id)}")
+    logger.info(f"Label to ID mapping sample: {list(train_data_prep.label2id.items())[:5]}")
 
     try:
-        logger.info("Final model training.")
+        logger.info("model training")
 
-        hp_files = glob.glob(os.path.join(OUTPUT_PATH, "best_hyperparameters_*.json"))
+        # Find latest hyperparameters file 
+        hp_files = glob.glob(os.path.join(OUTPUT_PATH, "best_hyperparameters*.json"))
         if not hp_files:
-            logger.error("No hyperparameters file found!")
-            raise FileNotFoundError("No hyperparameter files found. Run hp_tuning.py first.")
+            # Fallback to original files
+            hp_files = glob.glob(os.path.join(OUTPUT_PATH, "best_hyperparameters_*.json"))
+        
+        if not hp_files:
+            raise FileNotFoundError(
+                "No hyperparameters file found."
+            )
 
         latest_hp_file = max(hp_files, key=os.path.getctime)
         logger.info(f"Loading hyperparameters from: {latest_hp_file}")
 
+        import json
         with open(latest_hp_file, "r") as f:
             best_hyperparameters = json.load(f)
 
@@ -239,6 +366,8 @@ if __name__ == "__main__":
         logger.info(f"Batch size: {batch_size}")
         logger.info(f"Device: {DEVICE}")
         logger.info(f"Number of labels: {len(train_data_prep.label2id)}")
+        logger.info(f"Target UPOS: {TARGET_UPOS}")
+        logger.info(f"Hyperparameters: {best_hyperparameters}")
 
         train_loader = train_data_prep.create_dataloader(
             tokenizer,
@@ -250,6 +379,11 @@ if __name__ == "__main__":
             batch_size=batch_size,
             shuffle_mode=False
         )
+        
+        # Compute class weights
+        class_weights = train_data_prep.compute_class_weights()
+        logger.info(f"Class weights: Min={class_weights.min():.3f}, Max={class_weights.max():.3f}")
+        logger.info(f"Non-zero weights: {(class_weights > 0).sum()}/{len(class_weights)}")
 
         model = train_final_model(
             train_loader=train_loader,
@@ -257,13 +391,15 @@ if __name__ == "__main__":
             num_labels=len(train_data_prep.label2id),
             best_hyperparameters=best_hyperparameters,
             model_name=MODEL_NAME,
+            id2label=train_data_prep.id2label,
             epochs=N_EPOCHS,
             device=DEVICE,
-            accumulation_steps=1,
-            metrics_file=metrics_file
+            accumulation_steps=ACCUMULATION_STEPS,
+            metrics_file=metrics_file,
+            class_weights=class_weights
         )
 
-        # Saving model
+        # Save final model
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         final_model_fname = os.path.join(
             MODEL_PATH,
@@ -276,11 +412,12 @@ if __name__ == "__main__":
             'num_labels': len(train_data_prep.label2id),
             'model_name': MODEL_NAME,
             'label2id': train_data_prep.label2id,
-            'id2label': {v: k for k, v in train_data_prep.label2id.items()}
+            'id2label': train_data_prep.id2label,
+            'target_upos': TARGET_UPOS
         }, final_model_fname)
 
         logger.info(f"model saved to: {final_model_fname}")
 
     except Exception as e:
-        logger.error(f"training failed: {e}", exc_info=True)
+        logger.error(f"Training failed: {e}", exc_info=True)
         raise
