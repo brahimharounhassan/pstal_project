@@ -164,8 +164,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Predict super-senses with feature-based approach (fine-tuned embeddings + MLP)'
     )
-    parser.add_argument('--classifier', required=True, 
-                        help='Path to trained MLP classifier (.pt from train_finetuned.py)')
+    parser.add_argument('--finetuned-model', required=True, help='Path to trained MLP classifier (.pt from train_finetuned.py)')
     parser.add_argument('--input', required=True, help='Path to input corpus (CoNLL-U)')
     parser.add_argument('--output', default='predictions/ssense_finetuned.conllu', 
                         help='Path to output file')
@@ -177,14 +176,14 @@ def main():
     args = parser.parse_args()
     
     logger.info("Super-sense Prediction")
-    logger.info(f"Classifier: {args.classifier}")
+    logger.info(f"Fine-tuned model: {args.finetuned_model}")
     logger.info(f"Input: {args.input}")
     logger.info(f"Output: {args.output}")
     logger.info(f"Device: {args.device}")
     
     # Load MLP classifier
     classifier, label_vocab_rev, finetuned_model_path = load_classifier(
-        args.classifier, 
+        args.finetuned_model, 
         device=args.device
     )
     

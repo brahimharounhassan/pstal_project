@@ -50,10 +50,10 @@ Aix Marseille University and Centrale Mediterranée.
 
 
 - python src/predict_ssense.py \
-  --model models/ssense_finetuned.pth \
   --input data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
-  --finetuned-model models/final_model_epochs_50.pth \
-  --output predictions/ssense_finetuned_dev.conllu 
+  --finetuned-model models/final_model_epochs_50.pt \
+  --output predictions/ssense_finetuned_dev.conllu \
+  --normalize true
     
 
 - python lib/evaluate.py \
