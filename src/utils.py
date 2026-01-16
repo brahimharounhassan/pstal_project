@@ -328,6 +328,7 @@ def plot_train_val_losses(
 def setup_logger(name: str, log_dir: str = LOG_PATH, level=logging.INFO):
     """Setup logger with file and console handlers."""
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{name}_{timestamp}.log"
 
     logger = logging.getLogger(name)
@@ -363,6 +364,7 @@ def setup_training_logger(log_dir: str = LOG_PATH):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     logger = setup_logger("training", log_dir)
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
     metrics_file = log_dir / f"training_metrics_{timestamp}.csv"
     
     with open(metrics_file, 'w') as f:
