@@ -15,7 +15,7 @@ dataset:
 
 model_config:
   model_name: "almanach/camembert-base"
-  n_epochs: 50
+  n_epochs: 100
   patience: 10
   accumulation_steps: 4
 

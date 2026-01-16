@@ -2,6 +2,7 @@
 Hyperparameter tuning with Optuna for LoRA fine-tuning.
 """
 
+import argparse
 from pathlib import Path
 import sys
 import time
@@ -244,6 +245,14 @@ def train_eval_model(
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description='Train hyper-parameter tuning with Optuna for LoRA fine-tuning')
+    parser.add_argument('--n-trials', type=int, default=N_TRIALS_TUNER, help='Number of trials for hyperparameter tuning')
+    parser.add_argument('--n-epochs', type=int, default=N_EPOCH_TUNER, help='Number of epochs for each trial')
+    parser.add_argument('--model-name', type=str, default=MODEL_NAME, help='Model name')
+    
+    args = parser.parse_args()
+    
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     ModelConfig.device = device
 
@@ -268,12 +277,17 @@ if __name__ == "__main__":
     try:
         logger.info("Hyperparameter tuning with Optuna")
 
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        logger.info(f"Model: {MODEL_NAME}")
+        model_name = args.model_name
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        n_epoch = args.n_epochs
+        n_trials = args.n_trials
+
+        logger.info(f"Model: {model_name}")
         logger.info(f"Device: {device}")
         logger.info(f"Number of labels: {len(train_data_prep.label2id)}")
-        logger.info(f"Number of trials: {N_TRIALS_TUNER}")
-        logger.info(f"Epochs per trial: {N_EPOCH_TUNER}")
+        logger.info(f"Number of trials: {n_trials}")
+        logger.info(f"Epochs per trial: {n_epoch}")
 
         def objective(trial):
             return train_eval_model(
@@ -282,9 +296,9 @@ if __name__ == "__main__":
                 train_data_prep=train_data_prep,
                 dev_data_prep=dev_data_prep,
                 num_labels=len(train_data_prep.label2id),
-                model_name=MODEL_NAME,
+                model_name=model_name,
                 class_weights=class_weights,
-                epochs=N_EPOCH_TUNER,
+                epochs=n_epoch,
                 device=device,
                 accumulation_steps=ACCUMULATION_STEPS
             )
@@ -305,7 +319,7 @@ if __name__ == "__main__":
         
         study.optimize(
             objective,
-            n_trials=N_TRIALS_TUNER,
+            n_trials=n_trials,
             show_progress_bar=True,
             n_jobs=1,
             callbacks=[
@@ -321,7 +335,7 @@ if __name__ == "__main__":
         logger.info(f"Optuna optimization completed in {format_time(optuna_elapsed)}")
         
         best_hyperparameters = study.best_params
-        best_hyperparameters['lora_alpha'] = best_hyperparameters['r'] * 2  # Add computed alpha
+        best_hyperparameters['lora_alpha'] = best_hyperparameters['r'] * 2
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
@@ -376,7 +390,7 @@ if __name__ == "__main__":
             "n_failed": len(failed_trials),
             "best_trial_number": study.best_trial.number+1,
             "timestamp": timestamp,
-            "model_name": MODEL_NAME,
+            "model_name": model_name,
             "target_upos": list(TARGET_UPOS)
         }
         Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)

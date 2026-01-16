@@ -7,6 +7,7 @@ import sys
 import time
 import os
 import glob
+import argparse
 
 workspace_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(workspace_root))
@@ -319,6 +320,13 @@ def train_final_model(
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description='Train hyper-parameter tuning with Optuna for LoRA fine-tuning')
+    parser.add_argument('--model-name', type=str, default=MODEL_NAME, help='Model name')
+    parser.add_argument('--n-epochs', type=int, default=N_EPOCH_TUNER, help='Number of epochs')
+
+    args = parser.parse_args()
+
+
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     
     train_data_prep = TuningDataPreparation(
@@ -341,10 +349,10 @@ if __name__ == "__main__":
         logger.info("model training")
 
         # Find latest hyperparameters file 
-        hp_files = glob.glob(os.path.join(OUTPUT_PATH, "best_hyperparameters*.json"))
+        hp_files = glob.glob(str(Path(OUTPUT_PATH) / "best_hyperparameters*.json"))
         if not hp_files:
             # Fallback to original files
-            hp_files = glob.glob(os.path.join(OUTPUT_PATH, "best_hyperparameters_*.json"))
+            hp_files = glob.glob(str(Path(OUTPUT_PATH) / "best_hyperparameters_*.json"))
         
         if not hp_files:
             raise FileNotFoundError(
@@ -358,14 +366,18 @@ if __name__ == "__main__":
         with open(latest_hp_file, "r") as f:
             best_hyperparameters = json.load(f)
 
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        
+        model_name = args.model_name
+        n_epochs = args.n_epochs
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
         batch_size = best_hyperparameters['bs']
 
         ModelConfig.batch_size = batch_size
 
         logger.info(f"Training configuration:")
-        logger.info(f"Model: {MODEL_NAME}")
-        logger.info(f"Epochs: {N_EPOCHS}")
+        logger.info(f"Model: {model_name}")
+        logger.info(f"Epochs: {n_epochs}")
         logger.info(f"Batch size: {batch_size}")
         logger.info(f"Device: {DEVICE}")
         logger.info(f"Number of labels: {len(train_data_prep.label2id)}")
@@ -393,9 +405,9 @@ if __name__ == "__main__":
             dev_loader=dev_loader,
             num_labels=len(train_data_prep.label2id),
             best_hyperparameters=best_hyperparameters,
-            model_name=MODEL_NAME,
+            model_name=model_name,
             id2label=train_data_prep.id2label,
-            epochs=N_EPOCHS,
+            epochs=n_epochs,
             device=DEVICE,
             accumulation_steps=ACCUMULATION_STEPS,
             metrics_file=metrics_file,
@@ -405,16 +417,13 @@ if __name__ == "__main__":
         Path(MODEL_PATH).mkdir(parents=True, exist_ok=True)
         # Save final model
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        final_model_fname = os.path.join(
-            MODEL_PATH,
-            f"final_model_{timestamp}.pt"
-        )
+        final_model_fname = Path(MODEL_PATH) / f"final_model_{timestamp}.pt"
 
         torch.save({
             'model_state_dict': model.state_dict(),
             'hyperparameters': best_hyperparameters,
             'num_labels': len(train_data_prep.label2id),
-            'model_name': MODEL_NAME,
+            'model_name': model_name,
             'label2id': train_data_prep.label2id,
             'id2label': train_data_prep.id2label,
             'target_upos': TARGET_UPOS
