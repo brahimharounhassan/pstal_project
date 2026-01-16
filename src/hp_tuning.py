@@ -217,7 +217,7 @@ def train_eval_model(
             )
 
             # Report for pruning (negative because Optuna minimizes)
-            trial.report(-val_f1_macro, epoch)
+            trial.report(-val_f1_macro, epoch+1)
             if trial.should_prune():
                 raise optuna.TrialPruned()
 

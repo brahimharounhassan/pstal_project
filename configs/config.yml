@@ -2,7 +2,7 @@ paths:
   root: "pstal_project/"
   log: "logs/"
   output: "outputs/"
-  checkpoint: "models/checkpoints/"
+  checkpoint: "checkpoints/"
   model: "models/"
 
 dataset:
