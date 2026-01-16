@@ -82,9 +82,9 @@ def train_final_model(
 
     lora_model = get_peft_model(base_model, lora_config)
     
-    # Freeze backbone params for LoRA
+    # Freeze backbone params, keep LoRA and classifier trainable
     for name, param in lora_model.named_parameters():
-        if "lora_" not in name:
+        if "lora_" not in name and "modules_to_save" not in name:
             param.requires_grad = False
 
     trainable = sum(p.numel() for p in lora_model.parameters() if p.requires_grad)
@@ -143,7 +143,7 @@ def train_final_model(
         total_loss = 0.0
         optimizer.zero_grad()
 
-        for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")):
+        for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}"), color="green", leave=False, ncols=80):
             input_ids, attention_mask, labels = [x.to(device) for x in batch]
 
             with autocast(device_type=device):
@@ -183,7 +183,7 @@ def train_final_model(
         all_labels = []
         
         with torch.no_grad():
-            for batch in tqdm(dev_loader, desc="Validation", leave=False):
+            for batch in tqdm(dev_loader, desc="Validation", color="yellow", leave=False, ncols=80):
                 input_ids, attention_mask, labels = [x.to(device) for x in batch]
                 
                 with autocast(device_type=device):
@@ -415,21 +415,38 @@ if __name__ == "__main__":
         )
 
         Path(MODEL_PATH).mkdir(parents=True, exist_ok=True)
-        # Save final model
+        
+        # Save LoRA model with PeftModel format (adapters only)
+        logger.info("Saving LoRA model with PeftModel format...")
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        final_model_fname = Path(MODEL_PATH) / f"final_model_{timestamp}.pt"
-
-        torch.save({
-            'model_state_dict': model.state_dict(),
+        final_model_dir = Path(MODEL_PATH) / f"final_model_lora_{timestamp}"
+        
+        # Save LoRA adapters and base model config
+        model.save_pretrained(final_model_dir)
+        tokenizer.save_pretrained(final_model_dir)
+        
+        logger.info(f"LoRA model type: {type(model)}")
+        
+        # Save additional metadata in a separate JSON file
+        import json
+        metadata = {
             'hyperparameters': best_hyperparameters,
             'num_labels': len(train_data_prep.label2id),
             'model_name': model_name,
             'label2id': train_data_prep.label2id,
             'id2label': train_data_prep.id2label,
-            'target_upos': TARGET_UPOS
-        }, final_model_fname)
+            'target_upos': TARGET_UPOS,
+            'merged': False,
+            'lora_format': True,
+            'timestamp': timestamp
+        }
+        
+        with open(final_model_dir / "training_metadata.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
 
-        logger.info(f"model saved to: {final_model_fname}")
+        logger.info(f"LoRA model saved to: {final_model_dir}")
+        logger.info(f"This model can be loaded with PeftModel.from_pretrained()")
+        logger.info(f"Adapters size is much smaller than full model")
 
     except Exception as e:
         logger.error(f"Training failed: {e}", exc_info=True)

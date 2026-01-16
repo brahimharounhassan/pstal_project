@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """
 Super-sense classification model based on contextual embeddings.
-
-This module implements an MLP (Multi-Layer Perceptron) classifier that takes as input
-contextual embeddings from pre-trained transformer models (BERT, CamemBERT, etc.)
-and predicts super-sense labels for nouns.
 """
 
 import torch.nn as nn

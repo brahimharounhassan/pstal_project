@@ -69,3 +69,8 @@ enonce/
 
 enonce/*
 *.ipynb
+*.md
+*.html
+
+
+*/peft_adapter

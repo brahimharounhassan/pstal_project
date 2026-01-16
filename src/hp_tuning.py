@@ -70,14 +70,15 @@ def train_eval_model(
     if accumulation_steps is None:
         accumulation_steps = ACCUMULATION_STEPS
 
-    # Hyperparameters - OPTIMIZED RANGES for CamemBERT + LoRA
-    lr = trial.suggest_float("lr", 5e-5, 3e-4, log=True)
-    r = trial.suggest_int("r", 8, 32)  # Extended range for complex tasks
-    alpha = r * 2  # Standard ratio: alpha = 2*r
-    dropout = trial.suggest_float("lora_dropout", 0.05, 0.2)
-    bs = trial.suggest_categorical('bs', [8, 16, 32])
+    # Hyperparameters - CamemBERT + LoRA
+    lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
+    r = trial.suggest_int("r", 8, 32)
+    alpha = trial.suggest_int("lora_alpha", 8, 64) # r * 2 
+    dora = trial.suggest_categorical("use_dora", [True, False])
+    dropout = trial.suggest_float("lora_dropout", 0.0, 0.3)
+    bs = trial.suggest_categorical('bs', [8, 16, 32, 64, 128])
     weight_decay = trial.suggest_float("weight_decay", 1e-5, 5e-3, log=True)
-    warmup_ratio = trial.suggest_float("warmup_ratio", 0.05, 0.2)
+    warmup_ratio = trial.suggest_float("warmup_ratio", 0.0, 0.2)
 
     try:
         # Create dataloaders
@@ -93,11 +94,11 @@ def train_eval_model(
         lora_config = LoraConfig(
             r=r,
             lora_alpha=alpha,
-            target_modules=["query", "value", "key"],  # For CamemBERT (RoBERTa-based)
+            target_modules=["query", "value", "key"],
             lora_dropout=dropout,
             bias="none",
             task_type="TOKEN_CLS",
-            use_dora=False  # Disabled for stability
+            use_dora=dora
         )
 
         lora_model = get_peft_model(base_model, lora_config)
@@ -203,7 +204,7 @@ def train_eval_model(
 
             avg_val_loss = val_loss / len(dev_loader)
             
-            # Calculate metrics - ADDED: macro F1 for better imbalanced class handling
+            # Calculate metrics
             val_accuracy = accuracy_score(all_labels, all_predictions)
             val_f1_macro = f1_score(all_labels, all_predictions, average='macro', zero_division=0)
             val_f1_weighted = f1_score(all_labels, all_predictions, average='weighted', zero_division=0)

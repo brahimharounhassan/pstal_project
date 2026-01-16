@@ -1,0 +1,23 @@
+{
+  "best_f1_macro": 0.6241888442753191,
+  "best_params": {
+    "lr": 0.0002984003153328757,
+    "r": 20,
+    "lora_dropout": 0.06182242760714653,
+    "bs": 8,
+    "weight_decay": 8.290093143102681e-05,
+    "warmup_ratio": 0.11342649425834413
+  },
+  "n_trials": 30,
+  "n_completed": 30,
+  "n_pruned": 14,
+  "n_failed": 0,
+  "best_trial_number": 27,
+  "timestamp": "2026-01-16_17-38-31",
+  "model_name": "almanach/camembert-base",
+  "target_upos": [
+    "NOUN",
+    "NUM",
+    "PROPN"
+  ]
+}

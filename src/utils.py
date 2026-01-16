@@ -238,7 +238,21 @@ class SuperSenseDataPreparation:
                 tok = {k: v.to(self.device) for k, v in tok.items()}
 
                 emb_sent = self.model(**tok)
+                
+                # # Handle both AutoModel and AutoModelForTokenClassification outputs
+                # if hasattr(emb_sent, 'hidden_states') and emb_sent.hidden_states is not None:
+                #     # For models with output_hidden_states=True
+                #     hidden = emb_sent.hidden_states[-1][0]  # Last layer, first batch
+                # elif hasattr(emb_sent, 'last_hidden_state'):
+                #     # For AutoModel
                 hidden = emb_sent.last_hidden_state[0]  # [T, H]
+                # else:
+                #     # For AutoModelForTokenClassification, extract from base model
+                #     if hasattr(self.model, 'base_model'):
+                #         # LoRA model: need to get embeddings from the encoder
+                #         hidden = self.model.base_model.model.roberta(**tok).last_hidden_state[0]
+                #     else:
+                #         raise ValueError("Cannot extract hidden states from model")
 
                 for word_idx in range(len(words)):
                     if upos_tags[word_idx] not in target_upos:
@@ -260,7 +274,7 @@ class SuperSenseDataPreparation:
 
         return embeddings_list, labels_list
 
-    def prepare_data(self, in_file: str):
+    def prepare_data(self, in_file: str, label_vocab: dict = None):
         """Prepare data from CoNLL-U file."""
         logger = setup_logger("Data preparation", log_dir=LOG_PATH)
         logger.info(f"Loading corpus from {in_file}")
@@ -271,8 +285,11 @@ class SuperSenseDataPreparation:
         embeddings_list, labels_list = self.extract_contextual_embeddings(sentences)
         logger.info(f"Extracted {len(embeddings_list)} embeddings")
 
-        label_vocab = self._build_label_vocab(labels_list)
-        labels = [label_vocab.get(lbl, label_vocab['*']) for lbl in labels_list]
+        # Use provided vocab or build new one
+        if label_vocab is None:
+            label_vocab = self._build_label_vocab(labels_list)
+        
+        labels = [label_vocab.get(lbl, label_vocab.get('*', 0)) for lbl in labels_list]
 
         embeddings = torch.stack(embeddings_list)
         labels = torch.tensor(labels, dtype=torch.long)
@@ -371,3 +388,78 @@ def setup_training_logger(log_dir: str = LOG_PATH):
         f.write("epoch,train_loss,val_loss,val_f1_macro,val_f1_weighted,val_accuracy,learning_rate,timestamp\n")
 
     return logger, metrics_file
+
+
+def write_conllu_predictions(sentences:list, predictions_list:list, reader: CoNLLUReader, output_path:str, supersense_column:str=SUPERSENSE_COLUMN)-> tuple[int, int, int]:
+    """
+    Write predictions to CoNLL-U format file.
+    """
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    
+    num_sentences = 0
+    num_words = 0
+    num_predicted = 0
+    
+    with open(output_path, 'w', encoding='utf-8') as outfile:
+        for sent, predictions in zip(sentences, predictions_list):
+            # Write metadata
+            if sent.metadata:
+                for key, value in sent.metadata.items():
+                    outfile.write(f"# {key} = {value}\n")
+            
+            # Write tokens with predictions
+            for tok_idx, token in enumerate(sent):
+                # Convert feats dict to string
+                feats_str = '_'
+                if token['feats']:
+                    if isinstance(token['feats'], dict):
+                        feats_str = '|'.join([f"{k}={v}" for k, v in sorted(token['feats'].items())])
+                    else:
+                        feats_str = str(token['feats'])
+                
+                # Convert misc dict to string
+                misc_str = '_'
+                if token['misc']:
+                    if isinstance(token['misc'], dict):
+                        misc_str = '|'.join([f"{k}={v}" if v else k for k, v in sorted(token['misc'].items())])
+                    else:
+                        misc_str = str(token['misc'])
+                
+                # Standard CoNLL-U fields
+                fields = [
+                    str(token['id']),
+                    token['form'],
+                    token['lemma'] if token['lemma'] else '_',
+                    token['upos'] if token['upos'] else '_',
+                    token['xpos'] if token['xpos'] else '_',
+                    feats_str,
+                    str(token['head']) if token['head'] else '_',
+                    token['deprel'] if token['deprel'] else '_',
+                    token['deps'] if token['deps'] else '_',
+                    misc_str,
+                ]
+                
+                # Add extra columns (including supersense)
+                extra_cols = []
+                for col_name in reader.header[10:]:
+                    if col_name == supersense_column:
+                        extra_cols.append(predictions[tok_idx])
+                        if predictions[tok_idx] not in ['*', '_']:
+                            num_predicted += 1
+                    else:
+                        extra_cols.append(token.get(col_name, '_'))
+                
+                # If supersense column not in header, add it at the end
+                if supersense_column not in reader.header:
+                    extra_cols.append(predictions[tok_idx])
+                    if predictions[tok_idx] not in ['*', '_']:
+                        num_predicted += 1
+                
+                all_fields = fields + extra_cols
+                outfile.write('\t'.join(all_fields) + '\n')
+            
+            outfile.write('\n')
+            num_sentences += 1
+            num_words += len(sent)
+    
+    return num_sentences, num_words, num_predicted

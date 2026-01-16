@@ -53,7 +53,7 @@ Aix Marseille University and Centrale Mediterranée.
   --input data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
   --finetuned-model models/final_model_epochs_50.pt \
   --output predictions/ssense_finetuned_dev.conllu \
-  --normalize true
+  --normalize
     
 
 - python lib/evaluate.py \
