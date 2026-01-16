@@ -14,7 +14,7 @@ ENV/
 
 # PyTorch models (fichiers lourds - ne pas commit)
 *.pt
-*.pth
+# *.pth
 *.ckpt
 
 # Predictions et accuracy files
