@@ -64,7 +64,7 @@ def load_finetuned_model(model_path: str, device: str):
     finetuned_model = finetuned_model.to(device)
     finetuned_model.eval()
     
-    logger.info("✓ Fine-tuned model loaded for embedding extraction")
+    logger.info("Fine-tuned model loaded for embedding extraction")
     
     return finetuned_model, model_name
 
@@ -97,7 +97,7 @@ def load_classifier(checkpoint_path, device='cpu'):
     classifier = classifier.to(device)
     classifier.eval()
     
-    logger.info(f"✓ Classifier loaded: {num_labels} labels, {embedding_dim}D embeddings")
+    logger.info(f"Classifier loaded: {num_labels} labels, {embedding_dim}D embeddings")
     
     return classifier, label_vocab_rev, finetuned_model_path
 
@@ -165,7 +165,7 @@ def main():
         description='Predict super-senses with feature-based approach (fine-tuned embeddings + MLP)'
     )
     parser.add_argument('--classifier', required=True, 
-                        help='Path to trained MLP classifier (.pth from train_finetuned.py)')
+                        help='Path to trained MLP classifier (.pt from train_finetuned.py)')
     parser.add_argument('--input', required=True, help='Path to input corpus (CoNLL-U)')
     parser.add_argument('--output', default='predictions/ssense_finetuned.conllu', 
                         help='Path to output file')
@@ -176,14 +176,11 @@ def main():
     
     args = parser.parse_args()
     
-    logger.info("=" * 80)
     logger.info("Super-sense Prediction")
-    logger.info("=" * 80)
     logger.info(f"Classifier: {args.classifier}")
     logger.info(f"Input: {args.input}")
     logger.info(f"Output: {args.output}")
     logger.info(f"Device: {args.device}")
-    logger.info("=" * 80)
     
     # Load MLP classifier
     classifier, label_vocab_rev, finetuned_model_path = load_classifier(
@@ -199,7 +196,7 @@ def main():
     
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    logger.info(f"✓ Tokenizer loaded: {model_name}")
+    logger.info(f"Tokenizer loaded: {model_name}")
     
     # Process input file
     logger.info(f"Processing {args.input}")
@@ -278,11 +275,9 @@ def main():
             num_sentences += 1
             num_words += len(sent)
         
-        logger.info("=" * 80)
-        logger.info(f"✓ Processed {num_sentences} sentences ({num_words} words)")
-        logger.info(f"✓ Predicted supersenses for {num_predicted} tokens")
-        logger.info(f"✓ Predictions written to {args.output}")
-        logger.info("=" * 80)
+        logger.info(f"Processed {num_sentences} sentences ({num_words} words)")
+        logger.info(f"Predicted supersenses for {num_predicted} tokens")
+        logger.info(f"Predictions written to {args.output}")
 
 
 if __name__ == '__main__':

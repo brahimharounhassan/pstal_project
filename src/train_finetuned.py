@@ -85,7 +85,7 @@ def main():
     )
     parser.add_argument('--train', required=True, help='Path to training corpus')
     parser.add_argument('--dev', required=True, help='Path to dev corpus')
-    parser.add_argument('--output', default='models/ssense_finetuned.pth', help='Output model file')
+    parser.add_argument('--output', default='models/ssense_finetuned.pt', help='Output model file')
     parser.add_argument('--finetuned-model', required=True, help='Fine-tuned LoRA model file path (.pt)')
     parser.add_argument('--n-epochs', type=int, default=20, help='Number of epochs')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
