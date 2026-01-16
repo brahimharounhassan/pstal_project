@@ -87,8 +87,8 @@ def main():
     parser.add_argument('--dev', required=True, help='Path to dev corpus')
     parser.add_argument('--output', default='models/ssense_finetuned.pth', help='Output model file')
     parser.add_argument('--finetuned-model', required=True, help='Fine-tuned LoRA model file path (.pt)')
-    parser.add_argument('--epochs', type=int, default=20, help='Number of epochs')
-    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
+    parser.add_argument('--n-epochs', type=int, default=20, help='Number of epochs')
+    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--dropout', type=float, default=0.3, help='Dropout rate')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
     parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu', 
