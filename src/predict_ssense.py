@@ -5,7 +5,7 @@ Super-sense prediction script from a trained model.
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 import argparse
@@ -127,18 +127,16 @@ def main():
     logger.info(f"Loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # Determine which fine-tuned model to use (CLI arg overrides checkpoint value)
-    finetuned_model_path = args.finetuned_model if args.finetuned_model else finetuned_from_checkpoint
     
     # If using a fine-tuned model, load it with LoRA weights merged
-    if finetuned_model_path:
-        logger.info(f"Loading fine-tuned LoRA model from: {finetuned_model_path}")
+    if args.finetuned_model:
+        logger.info(f"Loading fine-tuned LoRA model from: {args.finetuned_model}")
         from train_finetuned import load_finetuned_model
-        transformer_model, _ = load_finetuned_model(finetuned_model_path, args.device)
+        model, _ = load_finetuned_model(args.finetuned_model, args.device)
         logger.info("Fine-tuned model loaded with LoRA weights merged")
     else:
         logger.info("Using base transformer model (no fine-tuning)")
-        transformer_model = AutoModel.from_pretrained(model_name)
+        model = AutoModel.from_pretrained(model_name)
     
     logger.info(f"Processing {args.input}")
     
@@ -155,7 +153,7 @@ def main():
         for sent in tqdm(reader.readConllu(), desc="Predicting", ncols=80):
             # Predict super-senses for this sentence
             predictions = predict_sentence(
-                sent, classifier, tokenizer, transformer_model, 
+                sent, classifier, tokenizer, model, 
                 label_vocab_rev, args.device
             )
             

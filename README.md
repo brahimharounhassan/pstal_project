@@ -42,7 +42,7 @@ Aix Marseille University and Centrale Mediterranée.
   --train data/sequoia/sequoia-ud.parseme.frsemcor.simple.train \
   --dev data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
   --output models/ssense_finetuned.pth \
-  --model-name almanach/camembert-base \
+  --finetuned-model models/final_model_epochs_50.pth \
   --epochs 20 \
   --batch-size 64 \
   --dropout 0.3 \
@@ -52,6 +52,7 @@ Aix Marseille University and Centrale Mediterranée.
 - python src/predict_ssense.py \
   --model models/ssense_finetuned.pth \
   --input data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
+  --finetuned-model models/final_model_epochs_50.pth \
   --output predictions/ssense_finetuned_dev.conllu 
     
 
@@ -60,4 +61,4 @@ Aix Marseille University and Centrale Mediterranée.
     --gold data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
     --tagcolumn frsemcor:noun \
     --train data/sequoia/sequoia-ud.parseme.frsemcor.simple.train \
-    --upos-filter NOUN,PROPN,NUM
+    --upos-filter NOUN PROPN NUM

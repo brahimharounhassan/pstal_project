@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.utils import SuperSenseDataPreparation, setup_logger
 
 import torch
@@ -36,6 +36,7 @@ def load_finetuned_model(model_name: str, device: str):
     model_name = checkpoint['model_name']
     hyperparameters = checkpoint['hyperparameters']
     num_labels = checkpoint['num_labels']
+
     
     logger.info(f"Finetuned model: {model_name}")
     logger.info(f"Labels num: {num_labels}")
@@ -60,8 +61,6 @@ def load_finetuned_model(model_name: str, device: str):
     
     lora_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     lora_model.eval()
-    
-    logger.info("Modèle fine-tuné chargé avec succès")
     
     lora_model = lora_model.merge_and_unload()
     

@@ -3,7 +3,7 @@ from pathlib import Path
 import time
 
 # Add workspace root to Python path
-workspace_root = Path(__file__).resolve().parent.parent.parent
+workspace_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(workspace_root))
 
 from transformers import (AutoConfig, AutoModelForTokenClassification, AutoTokenizer)
