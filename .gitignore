@@ -1,19 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# PyTorch models (fichiers lourds - ne pas commit)
 *.pt
 *.pth
+*.ckpt
+
+# Predictions et accuracy files
 *.pred
 *.acc
-*__pycache__/
+predictions/*.conllu
+
+# LaTeX
 *.aux
 *.log
 *.out
 *.synctex.gz
 
-*.pyc
-.venv/
-venv/
-.env
+# Logs
+logs/
+*.log
 
+# Outputs temporaires
+outputs/*.npy
+outputs/*.png
+
+# Checkpoints (garder les meilleurs seulement)
+# checkpoints/
+
+# Optuna database
+optuna_study.db
+optuna_study.db-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Enoncés (si vous ne voulez pas les partager)
+# enonce/
+
+# Anciens TPs (si non nécessaires)
 tp1/
 tp2/
+tp3/
+tp4/
+tp5/
 
-enonce/
+tmp/

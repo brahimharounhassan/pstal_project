@@ -1,0 +1,19 @@
+{
+  "best_value": 0.33765726078015107,
+  "best_params": {
+    "lr": 0.0004918937531282901,
+    "r": 6,
+    "lora_alpha": 14,
+    "lora_dropout": 0.11276273554475238,
+    "use_dora": true,
+    "bs": 16,
+    "weight_decay": 1.0555500549727728e-05,
+    "warmup_ratio": 0.08422045852928897
+  },
+  "n_trials": 20,
+  "n_completed": 20,
+  "n_pruned": 3,
+  "n_failed": 0,
+  "best_trial_number": 18,
+  "timestamp": "2026-01-15_13-40-30"
+}

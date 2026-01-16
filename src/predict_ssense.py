@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 """
 Super-sense prediction script from a trained model.
-
-This script loads a pre-trained super-sense classifier and uses it
-to predict super-sense labels on a new corpus in CoNLL-U format.
-It uses the same transformer model as the one used during training
-to extract contextual embeddings.
-
-Usage:
-    python predict_ssense.py --model models/ssense_model.pt \\
-                            --input data/test.conllu \\
-                            --output predictions/test_pred.conllu
 """
 
 import sys
@@ -23,83 +13,47 @@ from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
 
 from model_ssense import SuperSenseClassifier
-from utils.logger import get_script_logger
+from configs.config import *
 
-logger = get_script_logger()
+from src.utils import setup_logger
 
-# Constants (same as for training)
-TARGET_UPOS = {"NOUN", "PROPN", "NUM"}
-SUPERSENSE_COLUMN = "frsemcor:noun"
+logger = setup_logger('EVAL SUPERSENSE')
 
 
 def load_checkpoint(filepath, device='cpu'):
     """
     Loads a super-sense classifier from a saved checkpoint.
     
-    Args:
-        filepath (str): Path to the .pt file containing the checkpoint
-        device (str, optional): Device where to load the model. Default 'cpu'.
-    
-    Returns:
-        tuple: (classifier, label_vocab_rev, model_name) where:
-            - classifier: the loaded SuperSenseClassifier model
-            - label_vocab_rev: reversed vocabulary {index: label}
-            - model_name: name of the transformer model used
-    
-    Example:
-        >>> classifier, label_vocab_rev, model_name = load_checkpoint('model.pt', 'cuda')
-        >>> print(f"Loaded {model_name} with {len(label_vocab_rev)} labels")
     """
     checkpoint = torch.load(filepath, map_location=device, weights_only=False)
     
     # Rebuilds the classifier with the saved hyperparameters
-    classifier = SuperSenseClassifier(
+    model = SuperSenseClassifier(
         embedding_dim=checkpoint['embedding_dim'],
         num_labels=checkpoint['num_labels'],
-        hidden_dim=checkpoint['hidden_dim'],
         dropout=checkpoint['dropout']
     )
     
-    # Loads the classifier weights
-    classifier.load_state_dict(checkpoint['model_state'])
-    classifier = classifier.to(device)
-    classifier.eval()
+    # Loads the model weights
+    model.load_state_dict(checkpoint['model_state'])
+    model = model.to(device)
+    model.eval()
     
     # Reverse the vocabulary for prediction (index -> label)
     label_vocab_rev = {v: k for k, v in checkpoint['label_vocab'].items()}
     
-    return classifier, label_vocab_rev, checkpoint['model_name']
+    # Get finetuned model path if available
+    finetuned_model_path = checkpoint.get('finetuned_model_path', None)
+    
+    return model, label_vocab_rev, checkpoint['model_name'], finetuned_model_path
 
 
-def predict_sentence(sentence, classifier, tokenizer, transformer_model, 
+def predict_sentence(sentence, model, tokenizer, transformer_model, 
                      label_vocab_rev, device='cpu'):
     """
     Predicts super-senses for all words in a sentence.
-    
-    For each word in the sentence:
-    1. If the word is not a noun (NOUN/PROPN/NUM), predicts '*'
-    2. Otherwise, extracts its contextual embedding via the transformer
-    3. Passes the embedding through the classifier to get the prediction
-    
-    Args:
-        sentence (TokenList): Sentence in CoNLL-U format
-        classifier (SuperSenseClassifier): Super-sense classifier
-        tokenizer: Tokenizer of the transformer model
-        transformer_model: Pre-trained transformer model
-        label_vocab_rev (dict): Reversed vocabulary {index: label}
-        device (str, optional): Computing device. Default 'cpu'.
-    
-    Returns:
-        list: List of predicted super-sense labels (one per word)
-    
-    Example:
-        >>> sentence = [...]  # "Quelle surprise ! Arturo arrive..."
-        >>> predictions = predict_sentence(sentence, classifier, tokenizer, 
-        ...                                transformer_model, label_vocab_rev)
-        >>> print(predictions)
-        ['*', 'Feeling', '*', 'Person', '*', ...]
     """
-    classifier.eval()
+    model.eval()
     transformer_model.eval()
     transformer_model = transformer_model.to(device)
     
@@ -142,7 +96,7 @@ def predict_sentence(sentence, classifier, tokenizer, transformer_model,
             avg_embedding = avg_embedding.to(device)
             
             # Predict the label
-            logits = classifier(avg_embedding)
+            logits = model(avg_embedding)
             pred_idx = torch.argmax(logits, dim=-1).item()
             pred_label = label_vocab_rev.get(pred_idx, '*')
             
@@ -159,18 +113,32 @@ def main():
                         help='Path to output file')
     parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu', 
                         help='Device to use')
+    parser.add_argument('--finetuned-model', default=None,
+                        help='Path to fine-tuned LoRA model (.pth)')
     
     args = parser.parse_args()
     
     logger.info(f"Loading model from {args.model}")
-    classifier, label_vocab_rev, model_name = load_checkpoint(args.model, device=args.device)
+    classifier, label_vocab_rev, model_name, finetuned_from_checkpoint = load_checkpoint(args.model, device=args.device)
     logger.info(f"Model loaded on device: {args.device}")
     logger.info(f"Transformer model: {model_name}")
     
-    # Load tokenizer and transformer model
-    logger.info(f"Loading tokenizer and transformer model")
+    # Load tokenizer
+    logger.info(f"Loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    transformer_model = AutoModel.from_pretrained(model_name)
+    
+    # Determine which fine-tuned model to use (CLI arg overrides checkpoint value)
+    finetuned_model_path = args.finetuned_model if args.finetuned_model else finetuned_from_checkpoint
+    
+    # If using a fine-tuned model, load it with LoRA weights merged
+    if finetuned_model_path:
+        logger.info(f"Loading fine-tuned LoRA model from: {finetuned_model_path}")
+        from train_finetuned import load_finetuned_model
+        transformer_model, _ = load_finetuned_model(finetuned_model_path, args.device)
+        logger.info("Fine-tuned model loaded with LoRA weights merged")
+    else:
+        logger.info("Using base transformer model (no fine-tuning)")
+        transformer_model = AutoModel.from_pretrained(model_name)
     
     logger.info(f"Processing {args.input}")
     

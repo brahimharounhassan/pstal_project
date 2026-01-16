@@ -1,0 +1,231 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{float}
+
+\geometry{a4paper, margin=2.5cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1em}
+
+\title{Analyse morphologique avec apprentissage multi-tâches \\
+\large PSTAL (Prédiction structurée pour le traitement automatique de la langue)\\
+\large TP 2}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section*{Objectif}
+L’objectif de ce TP est de développer et évaluer un système d’analyse morphologique. Par exemple, le système doit prédire que le mot \textit{étudiantes} est décliné au féminin (\texttt{Gender=Fem}) et pluriel (\texttt{Number=Plur}). Le système sera basé sur un classifieur neuronal avec \texttt{PyTorch} qui prendra en entrée une suite de mots et prédira les étiquettes de chacun de ces mots. En français, ce sont souvent les suffixes qui aident à prédire les traits morphologiques. Ainsi, nous lirons les phrases caractère à caractère, et non pas mot à mot. De plus, il faudra prédire non pas une seule étiquette mais plusieurs paires clé-valeur (voire aucune). Notre système sera donc plus complexe que celui développé pour la prédiction des POS au TP1 dont l'implementation se trouve dans le sous-répertoire \texttt{tp1/pstal-etu/} de ce repertoire \texttt{tp2/pstal-etu/}.
+
+\section{L’analyse morphologique}
+\label{sec1}
+
+Les traits morphologiques (dorénavant TM) sont des paires \texttt{clé=valeur} où la clé indique le type de trait (genre, nombre, temps, …). Ils sont présents dans la colonne \texttt{feats} du corpus (6\textsuperscript{e} colonne), avec chaque paire séparée de la suivante par une barre verticale. Par exemple :
+\begin{center}
+\texttt{Gender=Masc|Number=Sing}
+\end{center}
+représente deux traits : le genre (masculin) et le nombre (singulier).
+
+Dans l’exemple ci-dessous, les TM sont affichées sur plusieurs lignes :
+    
+\medskip
+\noindent
+\begin{tabular}{l*{8}{c}}
+mots & La & gare & routière & attend & toujours & ses & illuminations \\
+POS & DET & NOUN & ADJ & VERB & ADV & DET & NOUN \\
+TM & \shortstack{Definite=Def \\ Gender=Fem \\ Number=Sing \\ PronType=Art} &
+     \shortstack{Gender=Fem \\ Number=Sing} &
+     \shortstack{Gender=Fem \\ Number=Sing} &
+     \shortstack{Mood=Ind \\ Number=Sing \\ Person=3 \\ Tense=Pres \\ VerbForm=Fin} &
+     \_ &
+     \shortstack{Gender=Fem \\ Number=Plur \\ Poss=Yes} &
+     \shortstack{Gender=Fem \\ Number=Plur}
+\end{tabular}
+
+\medskip
+\noindent
+Les TM varient selon les langues. Par exemple, en français le TM \texttt{Case} est absent, alors qu’il est fréquent dans les langues à cas comme l’allemand, le polonais ou le hongrois.
+
+Plus important pour nous, les TM varient au sein d’une même langue selon la POS du mot : en français, les noms prennent les TM \texttt{Number} et \texttt{Gender}, alors que les verbes ont aussi \texttt{Number} mais, au lieu de \texttt{Gender}, prennent les TM \texttt{Mood}, \texttt{Person}, \texttt{Tense} et \texttt{VerbForm}.
+
+Chaque clé (type de TM) possède un ensemble fini de valeurs possibles\footnote{La documentation complète des traits se trouve sur le site \href{https://universaldependencies.org/u/feat/index.html}{Universal Dependencies pour les traits morphologiques}.}. Notez que les TM sont des \textbf{ensembles} : une clé ne peut pas apparaître deux fois pour un même mot. L’ensemble vide est dénoté par l’underscore (p.ex. \texttt{toujours} ci-dessus). La bibliothèque \texttt{conllu} renvoie \texttt{None} pour les ensembles de TM vides, et un dictionnaire Python sinon. Par convention, les TM sont ordonnés par ordre alphabétique : cela rend immédiate la comparaison de deux ensembles de TM par simple comparaison de chaîne de caractères.
+
+\section{Préparation des données}
+\label{sec2}
+
+\paragraph{Entrées :} Les TM sont liés à la forme des mots, notamment à la présence de certains suffixes en français (\texttt{-s} → pluriel, \texttt{-ons} → 1\textsuperscript{re} personne du pluriel, …). Nous n’extrairons pas les suffixes explicitement : ils seront représentés implicitement à l’aide d’un réseau récurrent sur les caractères\footnote{Cette idée est inspirée du modèle de langage FLAIR \href{https://aclanthology.org/C18-1139/}{(Akbik et al., 2018)}.}. Il faut donc transformer les phrases en séquences de caractères, pour ensuite les encoder avec un vocabulaire spécifique.
+
+\medskip
+\noindent
+Exemple :
+\begin{center}
+\begin{tabular}{c|ccccccccccccccccccccccccc}
+indice & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 & 16 & 17 & 18 & 19 & 20 & 21 & 22 & 23 & \\
+\hline
+\texttt{chars} & \texttt{<pad>} & L & a & \texttt{<esp>} & g & a & r & e & \texttt{<esp>} & r & o & u & t & i & è & r & e & \texttt{<esp>} & a & t & t & e & n & d & \dots \\
+\texttt{in\_enc} & 0 & 3 & 4 & 2 & 5 & 4 & 6 & 7 & 2 & 6 & 8 & 9 & 10 & 11 & 12 & 6 & 7 & 2 & 4 & 10 & 10 & 7 & 13 & 14 & \dots \\
+\texttt{ends} &  2 &  7 &  16 & 23 & 32 & 36 & 50 &  \\
+\end{tabular}
+\end{center}
+
+\noindent
+Dans cet exemple :
+\begin{itemize}[left=0pt]
+    \item Les caractères sont placés dans un vecteur \texttt{chars}, où un caractère spécial \texttt{<esp>} indique les frontières entre les mots.
+    \item La première position est remplie par un caractère spécial \texttt{<pad>} (explication plus tard).
+    \item Le vecteur \texttt{in\_enc} correspond aux mêmes caractères encodés sous forme d’entiers : un vocabulaire des caractères doit garder les correspondances, p.ex. $\{ \texttt{<pad>} \to 0,\ \texttt{<unk>} \to 1,\ \texttt{<esp>} \to 2,\ L \to 3,\ a \to 4,\ \dots \}$.
+    \item Un indice spécial \texttt{<unk>} est réservé aux caractères OOV (Out-Of-Vocabulary) présents à l’inférence mais absents du \texttt{".train"}; C’est le même encodage que lors du TP1, mais cette fois-ci sur les caractères au lieu des mots. 
+    \item Le vecteur \texttt{ends} indique les positions des fins de mots (utile pour obtenir une représentation par mot pour la prédiction (voir section~\ref{sec3}). Par exemple, le dernier caractère du premier mot \textit{"La"} se trouve à la position \textit{2} de \texttt{in\_enc}. Le deuxième mot \textit{"gare"} se termine à la position \textit{7}, etc. Les deux vecteurs \texttt{in\_enc} et
+\texttt{ends} sont les entrées du classifieur (paramètres de \textit{forward}).
+\end{itemize}
+
+\paragraph{Sorties :} Comme pour le TP1, les sorties sont encodées à l’aide d’un vocabulaire. L’indice 0 est réservé au padding, comme d’habitude. Pour commencer, nous nous concentrons sur un seul type de TM : \texttt{Number}. Les mots ayant ce trait (p.ex. noms, verbes) ont sa valeur encodée sous forme d’indice. Les mots n’ayant pas ce trait (p.ex. adverbes) se voient attribuer une valeur spéciale \texttt{<N/A>} :
+
+\medskip
+\noindent
+\begin{tabular}{l*{7}{c}}
+mots & La & gare & routière & attend & toujours & ses & illuminations \\
+\texttt{Number} & Sing & Sing & Sing & Sing & \texttt{<N/A>} & Plur & Plur \\
+\texttt{out\_enc} & 2 & 2 & 2 & 2 & 1 & 3 & 3 \\
+\end{tabular}
+
+\paragraph{Padding :} Pour créer des tenseurs, il faut homogénéiser la longueur des phrases. Comme dans le TP1 :
+\begin{itemize}
+    \item On fixe un nombre maximal de caractères (p.ex. \texttt{max\_c = 200}) pour \texttt{in\_enc}.
+    \item On fixe un nombre maximal de mots (p.ex. \texttt{max\_w = 20}) pour \texttt{ends} et \texttt{out\_enc}.
+    \item Les phrases trop longues sont tronquées, les courtes sont paddées (avec 0 pour \texttt{ends} et \texttt{out\_enc}).
+\end{itemize}
+Le \texttt{DataLoader} peut prendre plusieurs tenseurs en entrée (\texttt{in\_enc} et \texttt{ends}), il n’est pas nécessaire d’avoir des entrées et sorties uniques.
+
+\section{Le modèle RNN d’étiquetage}
+\label{sec3}
+Le classifieur est très proche de celui du TP1 : une classe \texttt{nn.Module} avec les fonctions \texttt{forward} et \texttt{\_\_init\_\_} :
+
+\begin{itemize}
+    \item \textbf{\texttt{nn.Embedding}} : matrice de dimensions $|V_c| \times d_c$ prenant en entrée des entiers représentant les caractères (un batch dans \texttt{in\_enc}) et donnant en sortie un vecteur de dimension $d_c$ par caractère\footnote{La valeur de dc peut être petite, p.ex. entre 50 et 100, car le vocabulaire des caractères est plus petit que celui des mots.}. Si l’entrée est de dimension $B \times \texttt{max\_c}$, la sortie est de dimension $B \times \texttt{max\_c} \times d_c$.
+    
+    \item \textbf{\texttt{nn.GRU}} : pour chaque embedding de dimension $d_c$, la couche récurrente génère un vecteur caché de dimension $d_h$. On indique \texttt{batch\_first=True}, \texttt{bias=False}, et \texttt{bidirectional=False}. La sortie \texttt{rnn\_out} encode des informations contextuelles sur le voisinage des caractères (implicitement, des suffixes).
+    
+    \item \textbf{\texttt{gather}} : la dimension 1 de \texttt{rnn\_out} ($B \times \texttt{max\_c} \times d_h$) est incompatible avec celle des sorties ($B \times \texttt{max\_w}$). Le vecteur \texttt{ends} permet de sélectionner uniquement les états cachés du RNN correspondant aux fins de mots. On utilise \texttt{rnn\_out.gather} pour sélectionner les positions de \texttt{ends} dans la dimension 1, obtenant un tenseur de dimension $B \times \texttt{max\_w} \times d_h$. En pratique :
+    \begin{lstlisting}[language=Python, basicstyle=\ttfamily\small]
+ends = ends.unsqueeze(2).expand(-1, -1, dh)
+word_repr = rnn_out.gather(1, ends)
+    \end{lstlisting}
+    Comme \texttt{in\_enc} commence par \texttt{<pad>}, \texttt{gather} utilisera l’état du RNN correspondant à \texttt{<pad>} pour padder le résultat.
+    
+    \item \textbf{\texttt{nn.Linear}} : la couche de décision est de dimension $d_h \times |V_t|$, où $V_t$ est le vocabulaire du TM \texttt{Number} dans cette première version. On n’oublie pas le \texttt{dropout} et le \texttt{softmax} implicite (intégré à la loss).
+\end{itemize}
+
+\section{Entraînement du modèle}
+\label{sec4}
+Dans cette première version, les fonctions \texttt{fit} et \texttt{perf} peuvent être directement copiées du TP1. La seule particularité est que le \texttt{DataLoader} renvoie ici 2 entrées (\texttt{in\_enc} et \texttt{ends}) et 1 sortie.
+
+Comme pour le TP1 :
+\begin{itemize}
+    \item Utilisez \texttt{nn.CrossEntropyLoss} comme loss et \texttt{optim.Adam} comme optimiseur.
+    \item Parcourez les epochs, puis les batches.
+    \item Pour chaque batch :
+    \begin{enumerate}
+        \item Mettez les gradients à zéro.
+        \item Passez les 2 entrées dans le modèle.
+        \item Calculez la loss.
+        \item Rétro-propagez et actualisez les paramètres.
+    \end{enumerate}
+    \item Copiez aussi la fonction \texttt{perf} qui donne la valeur de la loss et de l’\textit{accuracy} (en masquant le padding) sur le \texttt{".dev"}.
+    \item Sauvegardez le modèle, les hyper-paramètres, et les vocabulaires des caractères et des TM.
+\end{itemize}
+Pour plus de détails, référez vous à la section \textbf{"Entraînement du modèle"} du TP1 nommé \textit{tp1.tex} , présent dans le sous-répertoire \texttt{tp1/pstal-etu/} de ce repertoire \texttt{tp2/pstal-etu/}.
+
+\section{Prédiction}
+\label{sec5}
+Comme pour le TP1 :
+\begin{itemize}
+    \item Chargez un modèle sauvegardé avec \texttt{load\_state\_dict}.
+    \item Lisez le corpus \texttt{".dev"} phrase par phrase (Il n’y a pas de traitement par batch, donc pas de longueur maximale (crop) ni de padding).
+    \item Encodez la phrase sous la forme d’une paire de tenseurs \texttt{in\_enc} et \texttt{ends}.
+    \item Passez-les dans le modèle pour obtenir $\hat{y}$, puis prédisez $\hat{t} = \arg\max(\hat{y})$.
+    \item Utilisez la fonction \texttt{rev\_vocab} dans \texttt{conllulib.py} pour obtenir les valeurs des TM à partir des indices.
+    \item Effacez tous les autres TM présents, et mettez \texttt{feats = None} quand l’étiquette prédite est \texttt{<N/A>}.
+    \item Imprimez les phrases avec \texttt{serialize}.
+\end{itemize}
+
+\section{Prédiction de plusieurs TM : modèle multi-tâches}
+\label{sec6}
+
+Une fois le classifieur pour le TM \texttt{Number} prêt et testé, il est temps de prédire plusieurs traits en même temps. Nous adoptons la technique d’\textbf{apprentissage joint} (ou \textbf{apprentissage multi-tâches}) :
+
+\begin{itemize}
+    \item Le classifieur aura autant de couches de décision (\texttt{nn.Linear}) que de types de traits (une pour \texttt{Gender}, une pour \texttt{Tense}, etc.).
+    \item Les embeddings de caractères et le RNN sont uniques et partagés par toutes les couches de décision, comme dans le modèle illustré en Figure~\ref{fig1}.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{image.png}
+    \caption{Architecture multi-tâches (inspiré de \href{https://aclanthology.org/K18-2004/}{Rybak \& Wróblewska, 2018}).}
+    \label{fig1}
+\end{figure}
+
+\paragraph{Préparation des données}
+\begin{itemize}
+    \item Créez un vocabulaire par type de TM (14 au total pour \textit{Sequoia}).
+    \item Stockez ces vocabulaires dans un dictionnaire indexé par le nom du TM.
+    \item Encodez les sorties et transformez-les en tenseurs (crop/pad) comme pour \texttt{Number}.
+    \item Le \texttt{DataLoader} aura désormais 2 entrées et 14 sorties !
+\end{itemize}
+
+\paragraph{Modèle}
+\begin{itemize}
+    \item Initialisez les 14 couches linéaires dans un \texttt{torch.nn.ParameterDict}.
+    \item Chaque couche est de dimension $d_h \times |V_t|$, où $V_t$ est le vocabulaire du trait $t$.
+    \item Dans \texttt{forward}, ces 14 couches prennent le même \texttt{rnn\_out} en entrée, et renvoient un tuple de 14 tenseurs.
+    \item La loss sera la somme (\texttt{torch.sum}) des losses sur les 14 sorties. Le gradient prendra toutes les sorties en compte simultanément.
+\end{itemize}
+
+\section{Évaluation}
+Le script d’évaluation \texttt{accuracy.py} calcule :
+\begin{itemize}
+    \item L’accuracy globale : proportion d’ensembles complets de traits prédits correctement (très stricte, car un seul trait mal prédit suffit pour que l’ensemble soit considéré faux).
+    \item Avec l’option \texttt{--tagcolumn feats}, vous obtenez aussi :
+    \begin{itemize}
+        \item Précision $P$, rappel $R$ et $F$-score \textit{par TM}.
+        \item Moyennes micro et macro.
+    \end{itemize}
+\end{itemize}
+Utilisez ces scores pour évaluer vos systèmes.
+
+\section{Travail à effectuer}
+Vous devez créer deux programmes :
+\begin{itemize}
+    \item \texttt{train\_morph.py} pour l’entraînement du modèle (Sections~\ref{sec4} et \ref{sec6}).
+    \item \texttt{predict\_morph.py} pour la prédiction des TM (Section~\ref{sec5}).
+\end{itemize}
+
+\textbf{Étapes suggérées} :
+\begin{enumerate}
+    \item Partir du code du TP1 (dans le sous-répertoire \texttt{tp1/pstal-etu/} de ce repertoire \texttt{tp2/pstal-etu/}), et modifier la colonne à prédire (\texttt{feats}) → prédire la totalité de la colonne comme une grande étiquette « supertag ».
+    \item Traiter les informations de la colonne \texttt{feats} pour prédire uniquement le trait \texttt{Number} → adapter les scripts d’entraînement et de prédiction, puis tester.
+    \item Adapter la représentation des entrées pour avoir des embeddings de caractères et le vecteur \texttt{ends}.
+    \item Adapter le \texttt{DataLoader} pour encapsuler \texttt{ends} et \texttt{in\_enc} en entrée.
+    \item Changer les fonctions \texttt{forward} et \texttt{fit} pour prendre en compte ces entrées.
+    \item Modifier le script de prédiction, tester cet étiqueteur de \texttt{Number} à base de caractères.
+    \item Ajouter un trait (p.ex. \texttt{Gender}) en sortie dans le \texttt{DataLoader}, dans \texttt{forward}, dans \texttt{fit} et dans \texttt{perf}.
+    \item Modifier le script de prédiction, tester cet étiqueteur de \texttt{Number} et \texttt{Gender}.
+    \item Ajouter les autres traits de la même façon, tester.
+\end{enumerate}
+
+\end{document}

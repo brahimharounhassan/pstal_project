@@ -1,0 +1,23 @@
+paths:
+  root: "pstal-etu/"
+  log: "logs/"
+  output: "outputs/"
+  checkpoint: "models/checkpoints/"
+  model: "models/"
+
+dataset:
+  full: "data/sequoia/sequoia-ud.parseme.frsemcor.simple.full"
+  train: "data/sequoia/sequoia-ud.parseme.frsemcor.simple.train"
+  dev: "data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev"
+  test: "data/sequoia/sequoia-ud.parseme.frsemcor.simple.test"
+  small: "data/sequoia/sequoia-ud.parseme.frsemcor.simple.small"
+  tiny: "data/sequoia/tiny.conllu"
+
+model_config:
+  model_name: "almanach/camembert-base"
+  n_epochs: 50
+  patience: 8
+
+tuning_config:
+  n_trials: 30
+  n_epochs: 15
