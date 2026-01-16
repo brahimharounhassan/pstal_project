@@ -155,7 +155,7 @@ def main():
         classifier, 
         train_loader, 
         dev_loader, 
-        epochs=args.epochs, 
+        epochs=args.n_epochs, 
         lr=args.lr, 
         device=args.device
     )

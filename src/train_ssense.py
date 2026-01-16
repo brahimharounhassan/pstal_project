@@ -139,8 +139,8 @@ def main():
     parser.add_argument('--output', default='models/ssense_model.pt', help='Output model file')
     parser.add_argument('--model-name', default='almanach/camembert-base',
                         help='Transformer model name')
-    parser.add_argument('--epochs', type=int, default=20, help='Number of epochs')
-    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
+    parser.add_argument('--n-epochs', type=int, default=20, help='Number of epochs')
+    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     # parser.add_argument('--hidden-dim', type=int, default=64, help='Hidden dimension')
     parser.add_argument('--dropout', type=float, default=0.3, help='Dropout rate')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
@@ -202,7 +202,7 @@ def main():
         classifier, 
         train_loader, 
         dev_loader, 
-        epochs=args.epochs, 
+        epochs=args.n_epochs, 
         lr=args.lr, 
         device=args.device
         )
