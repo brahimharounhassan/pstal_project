@@ -134,6 +134,8 @@ def train_final_model(
     
     training_start_time = time.time()
     logger.info(f"Fine-tuning started - {epochs} epochs max")
+    
+    Path(CHECKPOINT_PATH).mkdir(parents=True, exist_ok=True)
 
     for epoch in range(epochs):
         lora_model.train()
@@ -244,6 +246,7 @@ def train_final_model(
             best_epoch = epoch + 1
             epochs_no_improve = 0
             
+
             # Overwrite same checkpoint fil
             if best_model_fname is None:
                 best_model_fname = CHECKPOINT_PATH / "best_model_checkpoint.pt"
@@ -293,6 +296,8 @@ def train_final_model(
     logger.info(f"Training time: {format_time(training_elapsed)}")
     logger.info(f"Best epoch: {best_epoch}")
     logger.info(f"Best F1 Macro: {best_val_f1_macro:.4f}")
+
+    Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
     
     np.save(OUTPUT_PATH / "train_losses.npy", np.array(train_losses))
     np.save(OUTPUT_PATH / "val_losses.npy", np.array(val_losses))
@@ -397,6 +402,7 @@ if __name__ == "__main__":
             class_weights=class_weights
         )
 
+        Path(MODEL_PATH).mkdir(parents=True, exist_ok=True)
         # Save final model
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         final_model_fname = os.path.join(

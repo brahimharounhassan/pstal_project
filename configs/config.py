@@ -101,6 +101,3 @@ DATA_TEST = ROOT_PATH / Path(config.dataset.test)
 TARGET_UPOS = {"NOUN", "PROPN", "NUM"}
 SUPERSENSE_COLUMN = "frsemcor:noun"
 
-import os
-for path in [MODEL_PATH, CHECKPOINT_PATH, OUTPUT_PATH, LOG_PATH]:
-    os.makedirs(path, exist_ok=True)

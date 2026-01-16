@@ -161,6 +161,7 @@ def main():
     )
     
     # Save model
+    
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     
     label_vocab_dict = dict(label_vocab)

@@ -324,6 +324,7 @@ if __name__ == "__main__":
         best_hyperparameters['lora_alpha'] = best_hyperparameters['r'] * 2  # Add computed alpha
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
         filepath = OUTPUT_PATH / f"best_hyperparameters_{timestamp}.json"
 
         import json
@@ -378,7 +379,7 @@ if __name__ == "__main__":
             "model_name": MODEL_NAME,
             "target_upos": list(TARGET_UPOS)
         }
-
+        Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
         with open(OUTPUT_PATH / f"study_summary{timestamp}.json", "w") as f:
             json.dump(study_summary, f, indent=2)
 

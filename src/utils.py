@@ -317,6 +317,9 @@ def plot_train_val_losses(
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
+
+    Path(OUTPUT_PATH).parent.mkdir(parents=True, exist_ok=True)
+
     fname = OUTPUT_PATH / "train_val_losses.png"
     plt.savefig(fname, dpi=300, bbox_inches="tight")
     plt.show()
