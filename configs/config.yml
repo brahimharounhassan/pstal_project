@@ -1,5 +1,5 @@
 paths:
-  root: "pstal-etu/"
+  root: "pstal_project/"
   log: "logs/"
   output: "outputs/"
   checkpoint: "models/checkpoints/"
