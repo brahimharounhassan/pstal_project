@@ -68,7 +68,7 @@ def train_epochs(
     )
 
     best_acc = 0.0
-    patience = 3
+    patience = 10
     no_improve = 0
 
     training_start_time = time.time()
