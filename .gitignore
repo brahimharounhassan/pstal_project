@@ -66,3 +66,6 @@ tp5/
 
 tmp/
 enonce/
+
+enonce/*
+*.ipynb
