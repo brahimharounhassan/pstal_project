@@ -108,7 +108,7 @@ def train_eval_model(
 
         trainable = sum(p.numel() for p in lora_model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in lora_model.parameters())
-        logger.info(f"Trial {trial.number} | Trainable: {trainable:,}/{total:,} ({100*trainable/total:.2f}%)")
+        logger.info(f"Trial {trial.number+1 } | Trainable: {trainable:,}/{total:,} ({100*trainable/total:.2f}%)")
 
         lora_model.to(device)
 
@@ -210,7 +210,7 @@ def train_eval_model(
             best_val_f1_macro = max(best_val_f1_macro, val_f1_macro)
 
             logger.info(
-                f"Trial {trial.number} Epoch {epoch+1} | "
+                f"Trial {trial.number+1} Epoch {epoch+1} | "
                 f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
                 f"Val F1 Macro: {val_f1_macro:.4f} | Val F1 Weighted: {val_f1_weighted:.4f} | "
                 f"Val Acc: {val_accuracy:.4f}"
@@ -225,7 +225,7 @@ def train_eval_model(
         return -best_val_f1_macro
         
     except Exception as e:
-        logger.error(f"Trial {trial.number} failed: {e}")
+        logger.error(f"Trial {trial.number+1} failed: {e}")
         raise
     finally:
         # Memory cleanup
@@ -310,7 +310,7 @@ if __name__ == "__main__":
             n_jobs=1,
             callbacks=[
                 lambda study, trial: logger.info(
-                    f"Trial {trial.number} finished | "
+                    f"Trial {trial.number+1} finished | "
                     f"F1 Macro: {-trial.value:.4f} | "
                     f"Params: {trial.params}"
                 )
@@ -333,7 +333,7 @@ if __name__ == "__main__":
 
         logger.info(f"Best hyperparameters saved to: {filepath}")
         logger.info(f"Best F1 Macro: {-study.best_value:.4f}")
-        logger.info(f"Best trial: #{study.best_trial.number}")
+        logger.info(f"Best trial: #{study.best_trial.number+1}")
         logger.info("Best hyperparameters:")
         for key, value in best_hyperparameters.items():
             logger.info(f"{key}: {value}")
@@ -374,7 +374,7 @@ if __name__ == "__main__":
             "n_completed": len(completed_trials),
             "n_pruned": len(pruned_trials),
             "n_failed": len(failed_trials),
-            "best_trial_number": study.best_trial.number,
+            "best_trial_number": study.best_trial.number+1,
             "timestamp": timestamp,
             "model_name": MODEL_NAME,
             "target_upos": list(TARGET_UPOS)
