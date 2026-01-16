@@ -244,13 +244,11 @@ def train_final_model(
             best_epoch = epoch + 1
             epochs_no_improve = 0
             
-            # Delete old checkpoint to save space
-            if best_model_fname is not None and best_model_fname.exists():
-                best_model_fname.unlink()
-                logger.info(f"Deleted old checkpoint")
+            # Overwrite same checkpoint fil
+            if best_model_fname is None:
+                best_model_fname = CHECKPOINT_PATH / "best_model_checkpoint.pt"
             
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            best_model_fname = CHECKPOINT_PATH / f"best_model_epoch_{epoch+1}_f1macro_{val_f1_macro:.4f}_{timestamp}.pt"
+            logger.info(f"Saving checkpoint: epoch {epoch+1}, F1 macro={val_f1_macro:.4f}")
             
             torch.save({
                 'epoch': epoch + 1,
@@ -305,7 +303,7 @@ def train_final_model(
 
     # Load best model
     if best_model_fname and best_model_fname.exists():
-        checkpoint = torch.load(best_model_fname, map_location=device)
+        checkpoint = torch.load(best_model_fname, map_location=device, weights_only=False)
         lora_model.load_state_dict(checkpoint['model_state_dict'])
         logger.info(f"Loaded best model from epoch {checkpoint['epoch']}")
     else:

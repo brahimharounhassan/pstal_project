@@ -95,3 +95,27 @@ Phase 2 - Extraction + MLP (train_finetuned.py):
 │   - ReLU + Dropout                             │
 │   - Linear(256 → 24)                           │
 └────────────────────────────────────────────────┘
+
+
+DoRA (Weight-Decomposed Low-Rank Adaptation) est une variante de LoRA qui décompose les poids en magnitude et direction :
+
+W' = W + ΔW = W + B × A  # LoRA standard
+W' = m · (W + B × A) / ||W + B × A||  # DoRA (magnitude × direction normalisée)
+
+Avantages de DoRA
++0.5-2% F1 sur certaines tâches (paper: Liu et al., 2024)
+Meilleure convergence sur des tâches très spécifiques
+Apprentissage plus stable de la magnitude et direction séparément
+❌ Inconvénients de DoRA (pourquoi désactivé)
+Instabilité avec CamemBERT
+
+DoRA est optimisé pour LLaMA/GPT-style models
+RoBERTa-based (CamemBERT) a une architecture différente
+Risque de divergence pendant l'entraînement
+Coût computationnel
+
+# LoRA standard
+output = W × input + (B × A) × input  # 1 normalisation
+
+# DoRA
+output = magnitude × normalize(W + B × A) × input  # 2 normalisations + calcul magnitude

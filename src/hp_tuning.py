@@ -143,7 +143,7 @@ def train_eval_model(
             train_loss = 0.0
             optimizer.zero_grad()
 
-            for step, batch in enumerate(tqdm(train_loader, desc=f"Trial {trial.number} Epoch {epoch+1}", leave=False)):
+            for step, batch in enumerate(tqdm(train_loader, desc=f"Trial {trial.number+1} Epoch {epoch+1}", leave=False)):
                 input_ids, attention_mask, labels = [x.to(device) for x in batch]
 
                 with autocast(device_type=device):
@@ -376,7 +376,7 @@ if __name__ == "__main__":
             "best_trial_number": study.best_trial.number,
             "timestamp": timestamp,
             "model_name": MODEL_NAME,
-            "target_upos": TARGET_UPOS
+            "target_upos": list(TARGET_UPOS)
         }
 
         with open(OUTPUT_PATH / f"study_summary{timestamp}.json", "w") as f:
