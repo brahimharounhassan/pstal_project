@@ -67,7 +67,7 @@ def load_peft_adapter(peft_adapter_path: str, device: str):
     
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    return peft_model, tokenizer, id2label, model_name
+    return peft_model, tokenizer, id2label
 
 
 def predict_sentence(sentence, model, tokenizer, id2label, target_upos, device='cpu'):
@@ -75,7 +75,7 @@ def predict_sentence(sentence, model, tokenizer, id2label, target_upos, device='
     upos_tags = [token['upos'] for token in sentence]
     
     # Tokenization
-    encodings = tokenizer(
+    tok_sent = tokenizer(
         words,
         is_split_into_words=True,
         padding=False,
@@ -84,10 +84,10 @@ def predict_sentence(sentence, model, tokenizer, id2label, target_upos, device='
     ).to(device)
     
     with torch.no_grad():
-        outputs = model(**encodings)
+        outputs = model(**tok_sent)
         logits = outputs.logits.squeeze(0)  # [seq_len, num_labels]
     
-    word_ids = encodings.word_ids()
+    word_ids = tok_sent.word_ids()
     predictions = []
     
     for word_idx in range(len(words)):
@@ -116,8 +116,7 @@ def predict_sentence(sentence, model, tokenizer, id2label, target_upos, device='
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Prediction with fine-tuned model from peft_adapter'
+    parser = argparse.ArgumentParser(description='Prediction with fine-tuned model from peft_adapter'
     )
     parser.add_argument('--peft-adapter', required=True, 
                         help='Path to peft_adapter (e.g., models/peft_adapter_*)')
@@ -135,8 +134,7 @@ def main():
     logger.info(f"Device: {args.device}")
     
     # Load fine-tuned model from peft_adapter
-    model, tokenizer, id2label, model_name = \
-        load_peft_adapter(args.peft_adapter, args.device)
+    model, tokenizer, id2label = load_peft_adapter(args.peft_adapter, args.device)
     
     # Load input corpus
     logger.info(f"\nLoading corpus: {args.input}")
@@ -178,7 +176,6 @@ def main():
     
     logger.info(f"{num_sentences} sentences written")
     logger.info(f"{num_words} tokens in total")
-    logger.info(f"{num_predicted} tokens predicted (excluding '*' and '_')")
     
 
 if __name__ == '__main__':

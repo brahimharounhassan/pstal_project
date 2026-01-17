@@ -321,7 +321,6 @@ if __name__ == "__main__":
         optuna_start_time = time.time()
         optuna_start_timestamp = datetime.now().isoformat()
         
-        # Callback to clean memory between trials
         def trial_callback(study, trial):
             logger.info(
                 f"Trial {trial.number+1} finished | "

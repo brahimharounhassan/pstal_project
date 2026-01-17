@@ -13,6 +13,8 @@ from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
 
 from model_ssense import SuperSenseClassifier
+from src.model_lightgbm import LightGBMClassifier
+from src.model_tabnet import TabNetClassifier
 from configs.config import *
 from src.utils import setup_logger, write_conllu_predictions
 from lib.conllulib import CoNLLUReader
@@ -119,12 +121,28 @@ def main():
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # Load classifier
-    classifier = SuperSenseClassifier(
-        embedding_dim=embedding_dim,
-        num_labels=num_labels,
-        dropout=dropout
-    ).to(args.device)
+    # Determine classifier type
+    classifier_type = checkpoint.get('classifier_type', 'mlp')
+    logger.info(f"Classifier type: {classifier_type}")
+    
+    # Load classifier based on type
+    if classifier_type == 'lightgbm':
+        classifier = LightGBMClassifier(
+            num_labels=num_labels
+        ).to(args.device)
+        logger.info("Using LightGBM classifier")
+    elif classifier_type == 'tabnet':
+        classifier = TabNetClassifier(
+            num_labels=num_labels
+        ).to(args.device)
+        logger.info("Using TabNet classifier")
+    else:
+        classifier = SuperSenseClassifier(
+            embedding_dim=embedding_dim,
+            num_labels=num_labels,
+            dropout=dropout
+        ).to(args.device)
+        logger.info("Using MLP classifier")
     
     classifier.load_state_dict(checkpoint['model_state'])
     classifier.eval()

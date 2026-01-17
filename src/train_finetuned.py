@@ -59,7 +59,6 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     base_config = AutoConfig.from_pretrained(model_name)
     base_config.num_labels = num_labels
     
-    # Load as AutoModelForTokenClassification since it was fine-tuned with task_type="TOKEN_CLS"
     base_model = AutoModelForTokenClassification.from_pretrained(
         model_name,
         config=base_config
@@ -189,6 +188,7 @@ def main():
         'is_finetuned': True 
     }
     
+    # Save final model : finetuned + MLP
     torch.save(checkpoint, args.output)
     logger.info(f"Model saved to {args.output}")
 

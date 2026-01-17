@@ -55,7 +55,13 @@ python src/predict_ssense.py \
 
 
     
-
+ModèleCamemBERT original
+          ↓
+Extraction d'embeddings contextuels
+          ↓
+MLP SuperSenseClassifier (entraînable)
+          ↓
+Prédiction supersense
 
 
 Modèle LoRA fine-tuné (figé : Le backbone (CamemBERT original) est gelé seules les petites matrices LoRA apprennent)

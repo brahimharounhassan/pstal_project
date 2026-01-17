@@ -130,7 +130,6 @@ class TuningDataPreparation:
                     supersense = supersense_labels[word_id]
                     
                     # Only assign label if target UPOS and not special marker
-                    # Note: "*" is now included as a valid label (means "generic/no specific supersense")
                     if upos in self.target_upos and supersense != '_':
                         labels.append(self.label2id[supersense])
                     else:
@@ -157,11 +156,10 @@ class SuperSenseDataPreparation:
     feature-based approach for super-sense classification.
     """
     
-    def __init__(self, tokenizer: AutoTokenizer, model: AutoModel, device: str, normalize_embeddings: bool = False):
+    def __init__(self, tokenizer: AutoTokenizer, model: AutoModel, device: str):
         self.tokenizer = tokenizer
         self.device = device
         self.model = model
-        self.normalize_embeddings = normalize_embeddings
 
     def _build_label_vocab(self, labels: list) -> dict:
         """Build label vocabulary from list of labels."""
@@ -222,9 +220,7 @@ class SuperSenseDataPreparation:
                     word_embeddings = last_hidden_state[subtoken_indices]
                     avg_embedding = word_embeddings.mean(dim=0)
                     
-                    # Optional normalization (use with caution)
-                    if self.normalize_embeddings:
-                        avg_embedding = torch.nn.functional.normalize(avg_embedding, dim=-1)
+                    # avg_embedding = torch.nn.functional.normalize(avg_embedding, dim=-1)
                         
                     embeddings_list.append(avg_embedding.cpu())
                     labels_list.append(supersense_tags[word_idx])

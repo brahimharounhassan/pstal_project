@@ -100,7 +100,7 @@ def train_epochs(
 
     best_dev_loss = float("inf")
     best_state = None
-    patience = 20
+    patience = 10
     no_improve = 0
 
     for epoch in range(epochs):
