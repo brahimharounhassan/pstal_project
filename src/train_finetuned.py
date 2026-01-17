@@ -16,6 +16,7 @@ import torch.optim as optim
 import argparse
 from transformers import AutoTokenizer, AutoConfig, AutoModelForTokenClassification
 from peft import LoraConfig, get_peft_model, PeftModel
+import json
 
 from model_ssense import SuperSenseClassifier
 from lib.conllulib import Util
@@ -37,7 +38,6 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     
     if finetuned_path.is_dir():
         # Load metadata
-        import json
         metadata_file = finetuned_path / "training_metadata.json"
         is_lora_format = False
         model_name = None
@@ -60,7 +60,7 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
                 # Try to read from adapter config
                 with open(adapter_config_file, 'r') as f:
                     adapter_config = json.load(f)
-                model_name = adapter_config.get('base_model_name_or_path', 'camembert/camembert-base')
+                model_name = adapter_config.get('base_model_name_or_path', 'almanach/camembert-base')
             
             logger.info(f"Base model: {model_name}")
             

@@ -316,7 +316,9 @@ if __name__ == "__main__":
         )
 
         logger.info(f"Starting Optuna optimization - {N_TRIALS_TUNER} trials")
+        logger.info(f"Optimization device: {device}")
         optuna_start_time = time.time()
+        optuna_start_timestamp = datetime.now().isoformat()
         
         study.optimize(
             objective,
@@ -333,18 +335,42 @@ if __name__ == "__main__":
         )
 
         optuna_elapsed = time.time() - optuna_start_time
+        optuna_end_timestamp = datetime.now().isoformat()
+        
+        device_end = "cuda" if torch.cuda.is_available() else "cpu"
+        
         logger.info(f"Optuna optimization completed in {format_time(optuna_elapsed)}")
+        logger.info(f"Optimization end device: {device_end}")
+        
+        if device != device_end:
+            logger.warning(f"Device changed during optimization: {device} --> {device_end}")
         
         best_hyperparameters = study.best_params
-        best_hyperparameters['lora_alpha'] = best_hyperparameters['r'] * 2
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
         filepath = OUTPUT_PATH / f"best_hyperparameters_{timestamp}.json"
 
+        # Add metadata to hyperparameters
+        hyperparameters_with_metadata = {
+            **best_hyperparameters,
+            '_metadata': {
+                'device_start': device,
+                'device_end': device_end,
+                'device_changed': (device != device_end),
+                'optimization_start_time': optuna_start_timestamp,
+                'optimization_end_time': optuna_end_timestamp,
+                'optimization_duration_seconds': optuna_elapsed,
+                'optimization_duration_formatted': format_time(optuna_elapsed),
+                'best_f1_macro': -study.best_value,
+                'best_trial_number': study.best_trial.number + 1,
+                'timestamp': timestamp
+            }
+        }
+
         import json
         with open(filepath, "w") as f:
-            json.dump(best_hyperparameters, f, indent=2)
+            json.dump(hyperparameters_with_metadata, f, indent=2)
 
         logger.info(f"Best hyperparameters saved to: {filepath}")
         logger.info(f"Best F1 Macro: {-study.best_value:.4f}")
@@ -392,7 +418,14 @@ if __name__ == "__main__":
             "best_trial_number": study.best_trial.number+1,
             "timestamp": timestamp,
             "model_name": model_name,
-            "target_upos": list(TARGET_UPOS)
+            "target_upos": list(TARGET_UPOS),
+            "device_start": device,
+            "device_end": device_end,
+            "device_changed": (device != device_end),
+            "optimization_start_time": optuna_start_timestamp,
+            "optimization_end_time": optuna_end_timestamp,
+            "optimization_duration_seconds": optuna_elapsed,
+            "optimization_duration_formatted": format_time(optuna_elapsed)
         }
         Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
         with open(OUTPUT_PATH / f"study_summary{timestamp}.json", "w") as f:

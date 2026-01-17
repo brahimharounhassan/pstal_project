@@ -22,6 +22,8 @@ from tqdm import tqdm
 from datetime import datetime
 import torch
 import numpy as np
+import json
+
 
 from src.utils import TuningDataPreparation, setup_training_logger
 from configs.config import *
@@ -52,6 +54,8 @@ def train_final_model(
     best_hyperparameters: dict,
     model_name: str,
     id2label: dict,
+    label2id: dict,
+    tokenizer,
     epochs: int = 30,
     device: str = "cuda",
     accumulation_steps: int = 1,
@@ -134,7 +138,11 @@ def train_final_model(
     best_epoch = 0
     
     training_start_time = time.time()
+    training_start_timestamp = datetime.now().isoformat()
     logger.info(f"Fine-tuning started - {epochs} epochs max")
+
+
+    logger.info(f"Training start device: {device}")
     
     Path(CHECKPOINT_PATH).mkdir(parents=True, exist_ok=True)
 
@@ -143,7 +151,7 @@ def train_final_model(
         total_loss = 0.0
         optimizer.zero_grad()
 
-        for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}"), color="green", leave=False, ncols=80):
+        for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", color="blue", leave=False, ncols=80)):
             input_ids, attention_mask, labels = [x.to(device) for x in batch]
 
             with autocast(device_type=device):
@@ -183,7 +191,7 @@ def train_final_model(
         all_labels = []
         
         with torch.no_grad():
-            for batch in tqdm(dev_loader, desc="Validation", color="yellow", leave=False, ncols=80):
+            for batch in tqdm(dev_loader, desc="Validation", color="orange", leave=False, ncols=80):
                 input_ids, attention_mask, labels = [x.to(device) for x in batch]
                 
                 with autocast(device_type=device):
@@ -248,26 +256,41 @@ def train_final_model(
             epochs_no_improve = 0
             
 
-            # Overwrite same checkpoint fil
+            # Save checkpoint in PeftModel adapter format
             if best_model_fname is None:
-                best_model_fname = CHECKPOINT_PATH / "best_model_checkpoint.pt"
+                best_model_fname = CHECKPOINT_PATH / "best_model_checkpoint"
             
             logger.info(f"Saving checkpoint: epoch {epoch+1}, F1 macro={val_f1_macro:.4f}")
             
-            torch.save({
+            # Save LoRA adapters
+            lora_model.save_pretrained(best_model_fname)
+            tokenizer.save_pretrained(best_model_fname)
+            
+            # Save training metadata
+            checkpoint_metadata = {
                 'epoch': epoch + 1,
-                'model_state_dict': lora_model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': avg_val_loss,
                 'val_f1_macro': val_f1_macro,
                 'val_f1_weighted': val_f1_weighted,
                 'val_accuracy': val_accuracy,
                 'hyperparameters': best_hyperparameters,
-                'all_predictions': all_predictions,
-                'all_labels': all_labels
-            }, best_model_fname)
+                'num_labels': num_labels,
+                'model_name': model_name,
+                'label2id': label2id,
+                'id2label': id2label,
+                'timestamp': datetime.now().isoformat(),
+                'device_start': device,
+                'device_current': str(next(lora_model.parameters()).device),
+                'training_start_time': training_start_timestamp,
+                'checkpoint_saved_time': datetime.now().isoformat(),
+                'elapsed_time_seconds': time.time() - training_start_time,
+                'elapsed_time_formatted': format_time(time.time() - training_start_time)
+            }
             
-            logger.info(f"Saved best checkpoint: {best_model_fname.name}")
+            with open(best_model_fname / "checkpoint_metadata.json", 'w') as f:
+                json.dump(checkpoint_metadata, f, indent=2)
+            
+            logger.info(f"Saved best checkpoint to: {best_model_fname}")
             
             # Print classification report for best model
             try:
@@ -292,9 +315,19 @@ def train_final_model(
 
     # Save metrics
     training_elapsed = time.time() - training_start_time
+    training_end_timestamp = datetime.now().isoformat()
+    
+    # Detect actual device at end (may have changed on Colab if GPU quota exceeded)
+    device_end = str(next(lora_model.parameters()).device)
+    
     if epochs_no_improve < patience:
         logger.info(f"Training completed all {epochs} epochs")
     logger.info(f"Training time: {format_time(training_elapsed)}")
+    logger.info(f"Training end device: {device_end}")
+    
+    if device != device_end:
+        logger.warning(f"Device changed during training: {device} --> {device_end}")
+    
     logger.info(f"Best epoch: {best_epoch}")
     logger.info(f"Best F1 Macro: {best_val_f1_macro:.4f}")
 
@@ -309,11 +342,38 @@ def train_final_model(
 
     # Load best model
     if best_model_fname and best_model_fname.exists():
-        checkpoint = torch.load(best_model_fname, map_location=device, weights_only=False)
-        lora_model.load_state_dict(checkpoint['model_state_dict'])
-        logger.info(f"Loaded best model from epoch {checkpoint['epoch']}")
+        from peft import PeftModel
+        logger.info(f"Loading best checkpoint from: {best_model_fname}")
+        
+        # Load checkpoint metadata
+        with open(best_model_fname / "checkpoint_metadata.json", 'r') as f:
+            checkpoint_metadata = json.load(f)
+        
+        # Reload base model with correct config
+        config = AutoConfig.from_pretrained(model_name)
+        config.num_labels = num_labels
+        base_model = AutoModelForTokenClassification.from_pretrained(model_name, config=config)
+        
+        # Load LoRA adapters
+        lora_model = PeftModel.from_pretrained(base_model, best_model_fname)
+        lora_model.to(device)
+        
+        logger.info(f"Loaded best model from epoch {checkpoint_metadata['epoch']}")
     else:
         logger.warning("No best model checkpoint found, using final model state")
+
+    # Store training info for metadata
+    lora_model.training_info = {
+        'start_time': training_start_timestamp,
+        'end_time': training_end_timestamp,
+        'elapsed_seconds': training_elapsed,
+        'elapsed_formatted': format_time(training_elapsed),
+        'device_start': device,
+        'device_end': device_end,
+        'device_changed': (device != device_end),
+        'best_epoch': best_epoch,
+        'best_f1_macro': best_val_f1_macro
+    }
 
     return lora_model
 
@@ -378,7 +438,7 @@ if __name__ == "__main__":
         logger.info(f"Training configuration:")
         logger.info(f"Model: {model_name}")
         logger.info(f"Epochs: {n_epochs}")
-        logger.info(f"Batch size: {batch_size}")
+        # logger.info(f"Batch size: {batch_size}")
         logger.info(f"Device: {DEVICE}")
         logger.info(f"Number of labels: {len(train_data_prep.label2id)}")
         logger.info(f"Target UPOS: {TARGET_UPOS}")
@@ -407,6 +467,8 @@ if __name__ == "__main__":
             best_hyperparameters=best_hyperparameters,
             model_name=model_name,
             id2label=train_data_prep.id2label,
+            label2id=train_data_prep.label2id,
+            tokenizer=tokenizer,
             epochs=n_epochs,
             device=DEVICE,
             accumulation_steps=ACCUMULATION_STEPS,
@@ -419,7 +481,7 @@ if __name__ == "__main__":
         # Save LoRA model with PeftModel format (adapters only)
         logger.info("Saving LoRA model with PeftModel format...")
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        final_model_dir = Path(MODEL_PATH) / f"final_model_lora_{timestamp}"
+        final_model_dir = Path(MODEL_PATH) / f"peft_adapter_{timestamp}"
         
         # Save LoRA adapters and base model config
         model.save_pretrained(final_model_dir)
@@ -428,7 +490,6 @@ if __name__ == "__main__":
         logger.info(f"LoRA model type: {type(model)}")
         
         # Save additional metadata in a separate JSON file
-        import json
         metadata = {
             'hyperparameters': best_hyperparameters,
             'num_labels': len(train_data_prep.label2id),
@@ -438,15 +499,22 @@ if __name__ == "__main__":
             'target_upos': TARGET_UPOS,
             'merged': False,
             'lora_format': True,
-            'timestamp': timestamp
+            'timestamp': timestamp,
+            'training_device_start': model.training_info['device_start'],
+            'training_device_end': model.training_info['device_end'],
+            'training_device_changed': model.training_info['device_changed'],
+            'training_start_time': model.training_info['start_time'],
+            'training_end_time': model.training_info['end_time'],
+            'training_duration_seconds': model.training_info['elapsed_seconds'],
+            'training_duration_formatted': model.training_info['elapsed_formatted'],
+            'best_epoch': model.training_info['best_epoch'],
+            'best_f1_macro': model.training_info['best_f1_macro']
         }
         
         with open(final_model_dir / "training_metadata.json", 'w') as f:
             json.dump(metadata, f, indent=2)
 
         logger.info(f"LoRA model saved to: {final_model_dir}")
-        logger.info(f"This model can be loaded with PeftModel.from_pretrained()")
-        logger.info(f"Adapters size is much smaller than full model")
 
     except Exception as e:
         logger.error(f"Training failed: {e}", exc_info=True)
