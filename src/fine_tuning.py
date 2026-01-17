@@ -151,7 +151,7 @@ def train_final_model(
         total_loss = 0.0
         optimizer.zero_grad()
 
-        for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", color="blue", leave=False, ncols=80)):
+        for step, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", colour="blue", leave=False, ncols=80)):
             input_ids, attention_mask, labels = [x.to(device) for x in batch]
 
             with autocast(device_type=device):
@@ -191,7 +191,7 @@ def train_final_model(
         all_labels = []
         
         with torch.no_grad():
-            for batch in tqdm(dev_loader, desc="Validation", color="orange", leave=False, ncols=80):
+            for batch in tqdm(dev_loader, desc="Validation", colour="orange", leave=False, ncols=80):
                 input_ids, attention_mask, labels = [x.to(device) for x in batch]
                 
                 with autocast(device_type=device):
