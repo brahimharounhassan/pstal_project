@@ -12,7 +12,7 @@ import argparse
 workspace_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(workspace_root))
 
-from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoConfig, AutoModel, AutoModelForTokenClassification, AutoTokenizer, get_linear_schedule_with_warmup
 from peft import LoraConfig, get_peft_model
 from torch.optim import AdamW
 from torch.amp import GradScaler, autocast
@@ -70,17 +70,17 @@ def train_final_model(
     config = AutoConfig.from_pretrained(model_name)
     config.num_labels = num_labels
 
-    # Base model
-    base_model = AutoModelForTokenClassification.from_pretrained(model_name, config=config)
+    # IMPORTANT: Use AutoModel (encoder only) instead of AutoModelForTokenClassification
+    # We want to fine-tune embeddings, not train an end-to-end classifier
+    base_model = AutoModel.from_pretrained(model_name)
 
-    # LoRA config
+    # LoRA config - REMOVED task_type since we're using AutoModel
     lora_config = LoraConfig(
         r=best_hyperparameters['r'],
         lora_alpha=best_hyperparameters.get('lora_alpha', best_hyperparameters['r'] * 2),
         target_modules=["query", "value", "key"],
         lora_dropout=best_hyperparameters['lora_dropout'],
         bias="none",
-        task_type="TOKEN_CLS",
         use_dora=best_hyperparameters.get('use_dora', False)
     )
 
@@ -155,15 +155,22 @@ def train_final_model(
             input_ids, attention_mask, labels = [x.to(device) for x in batch]
 
             with autocast(device_type=device):
-                outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                # AutoModel doesn't have built-in loss computation
+                # We need to add our own classification head
+                outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask)
                 
-                # Apply class weights
-                if class_weights is not None:
-                    logits = outputs.logits
-                    loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
-                    loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
-                else:
-                    loss = outputs.loss
+                # Get last hidden state
+                hidden_states = outputs.last_hidden_state  # (batch, seq_len, hidden_dim)
+                
+                # Simple classification head (will be replaced by MLP later)
+                if not hasattr(lora_model, 'classifier_head'):
+                    lora_model.classifier_head = torch.nn.Linear(hidden_states.size(-1), num_labels).to(device)
+                
+                logits = lora_model.classifier_head(hidden_states)  # (batch, seq_len, num_labels)
+                
+                # Compute loss
+                loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
+                loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
                 
                 loss = loss / accumulation_steps
 
@@ -195,20 +202,19 @@ def train_final_model(
                 input_ids, attention_mask, labels = [x.to(device) for x in batch]
                 
                 with autocast(device_type=device):
-                    outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                    outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask)
+                    hidden_states = outputs.last_hidden_state
                     
-                    # Compute loss with class weights
-                    if class_weights is not None:
-                        logits = outputs.logits
-                        loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
-                        loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
-                    else:
-                        loss = outputs.loss
+                    logits = lora_model.classifier_head(hidden_states)
+                    
+                    # Compute loss
+                    loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
+                    loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
                 
                 val_loss_total += loss.item()
                 
                 # Get predictions
-                predictions = torch.argmax(outputs.logits, dim=-1)
+                predictions = torch.argmax(logits, dim=-1)
                 
                 # Flatten and filter out ignored indices (-100)
                 active_labels = labels.view(-1)
@@ -349,14 +355,15 @@ def train_final_model(
         with open(best_model_fname / "checkpoint_metadata.json", 'r') as f:
             checkpoint_metadata = json.load(f)
         
-        # Reload base model with correct config
-        config = AutoConfig.from_pretrained(model_name)
-        config.num_labels = num_labels
-        base_model = AutoModelForTokenClassification.from_pretrained(model_name, config=config)
+        # Reload base model (encoder only)
+        base_model = AutoModel.from_pretrained(model_name)
         
         # Load LoRA adapters
         lora_model = PeftModel.from_pretrained(base_model, best_model_fname)
         lora_model.to(device)
+        
+        # Restore classifier head
+        lora_model.classifier_head = torch.nn.Linear(base_model.config.hidden_size, num_labels).to(device)
         
         logger.info(f"Loaded best model from epoch {checkpoint_metadata['epoch']}")
     else:
