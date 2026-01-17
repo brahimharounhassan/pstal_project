@@ -80,8 +80,8 @@ def train_final_model(
         lora_dropout=best_hyperparameters['lora_dropout'],
         bias="none",
         task_type="TOKEN_CLS",
-        use_dora= True,#best_hyperparameters.get('use_dora', False),
-        use_rslora=True
+        use_dora= True, #best_hyperparameters.get('use_dora', False),
+        use_rslora=False
     )
 
     lora_model = get_peft_model(base_model, lora_config)
