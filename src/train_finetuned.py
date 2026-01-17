@@ -27,8 +27,7 @@ logger = setup_logger('TRAIN SSENSE FINE-TUNED')
 
 def load_finetuned_model(finetuned_model_path: str, device: str):
     """
-    Charge le modèle fine-tuné depuis un répertoire (format Hugging Face).
-    Si c'est un ancien fichier .pt, charge avec l'ancienne méthode pour compatibilité.
+    Loads a fine-tuned model from the specified path, handling both LoRA and merged formats.
     """
 
     logger.info(f"Chargement du modèle fine-tuné: {finetuned_model_path}")
@@ -37,7 +36,34 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     finetuned_path = Path(finetuned_model_path)
     
     if finetuned_path.is_dir():
-        # Load metadata
+        adapter_config_file = finetuned_path / "adapter_config.json"
+        metadata_file = finetuned_path / "training_metadata.json"
+        
+        if not adapter_config_file.exists() and not metadata_file.exists():
+            logger.info(f"No adapter found in {finetuned_path}, searching for peft_adapter_* subdirectories...")
+            
+            # Find all peft_adapter_* directories
+            peft_dirs = list(finetuned_path.glob("peft_adapter_*"))
+            
+            if not peft_dirs:
+                # Also try checkpoints
+                checkpoint_dir = finetuned_path / "checkpoints" / "best_model_checkpoint"
+                if checkpoint_dir.exists():
+                    logger.info(f"Found checkpoint: {checkpoint_dir}")
+                    finetuned_path = checkpoint_dir
+                else:
+                    raise FileNotFoundError(
+                        f"No peft_adapter_* directories found in {finetuned_model_path}. "
+                        f"Please specify the exact model directory."
+                    )
+            else:
+                # Sort by modification time (most recent first)
+                peft_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                finetuned_path = peft_dirs[0]
+                logger.info(f"Found {len(peft_dirs)} peft_adapter directories")
+                logger.info(f"Loading most recent: {finetuned_path.name}")
+        
+        # Now load from the resolved path
         metadata_file = finetuned_path / "training_metadata.json"
         is_lora_format = False
         model_name = None
@@ -47,6 +73,26 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
                 metadata = json.load(f)
             logger.info(f"Model trained on: {metadata.get('timestamp', 'unknown')}")
             logger.info(f"Number of labels: {metadata.get('num_labels')}")
+            
+            # Log training device info
+            device_start = metadata.get('training_device_start')
+            device_end = metadata.get('training_device_end')
+            device_changed = metadata.get('training_device_changed', False)
+            
+            if device_start:
+                logger.info(f"Training device: {device_start} → {device_end}")
+            
+            # Log training duration
+            duration = metadata.get('training_duration_formatted')
+            if duration:
+                logger.info(f"Training duration: {duration}")
+            
+            # Log best metrics
+            best_f1 = metadata.get('best_f1_macro')
+            best_epoch = metadata.get('best_epoch')
+            if best_f1:
+                logger.info(f"Best F1 macro: {best_f1:.4f} (epoch {best_epoch})")
+            
             is_lora_format = metadata.get('lora_format', False)
             model_name = metadata.get('model_name')
         
@@ -167,7 +213,8 @@ def main():
     parser.add_argument('--train', required=True, help='Path to training corpus')
     parser.add_argument('--dev', required=True, help='Path to dev corpus')
     parser.add_argument('--output', default='models/ssense_finetuned.pth', help='Output model file')
-    parser.add_argument('--finetuned-model', default='models/final_model_epochs_50.pth', help='Fine-tuned model file path')
+    parser.add_argument('--finetuned-model', default='models/', 
+                        help='Path to fine-tuned model directory (peft_adapter_*)')
     parser.add_argument('--n-epochs', type=int, default=50, help='Number of epochs')
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
     parser.add_argument('--dropout', type=float, default=0.3, help='Dropout rate')

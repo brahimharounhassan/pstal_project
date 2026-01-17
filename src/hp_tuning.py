@@ -103,9 +103,9 @@ def train_eval_model(
 
         lora_model = get_peft_model(base_model, lora_config)
         
-        # Freeze backbone parameters
+        # Freeze backbone parameters, keep LoRA adapters and classifier trainable
         for name, param in lora_model.named_parameters():
-            if "lora_" not in name:
+            if "lora_" not in name and "modules_to_save" not in name:
                 param.requires_grad = False
 
         trainable = sum(p.numel() for p in lora_model.parameters() if p.requires_grad)
@@ -173,6 +173,10 @@ def train_eval_model(
 
             avg_train_loss = train_loss / len(train_loader)
 
+            # Clear GPU cache after training
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             # Evaluation
             lora_model.eval()
             val_loss = 0.0
@@ -211,6 +215,11 @@ def train_eval_model(
             
             best_val_f1_macro = max(best_val_f1_macro, val_f1_macro)
 
+            # Clear predictions and labels to free memory
+            del all_predictions, all_labels
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             logger.info(
                 f"Trial {trial.number+1} Epoch {epoch+1} | "
                 f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
@@ -230,8 +239,13 @@ def train_eval_model(
         logger.error(f"Trial {trial.number+1} failed: {e}")
         raise
     finally:
-        # Memory cleanup
+        # Aggressive memory cleanup
+        if 'train_loader' in locals():
+            del train_loader
+        if 'dev_loader' in locals():
+            del dev_loader
         if 'lora_model' in locals():
+            lora_model.cpu()
             del lora_model
         if 'base_model' in locals():
             del base_model
@@ -239,9 +253,19 @@ def train_eval_model(
             del optimizer
         if 'scheduler' in locals():
             del scheduler
+        if 'scaler' in locals():
+            del scaler
+        if 'class_weights_device' in locals():
+            del class_weights_device
+        
+        # Force GPU memory cleanup
         if torch.cuda.is_available():
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        
         gc.collect()
+        
 
 
 if __name__ == "__main__":
@@ -320,18 +344,32 @@ if __name__ == "__main__":
         optuna_start_time = time.time()
         optuna_start_timestamp = datetime.now().isoformat()
         
+        # Callback to clean memory between trials
+        def trial_callback(study, trial):
+            logger.info(
+                f"Trial {trial.number+1} finished | "
+                f"F1 Macro: {-trial.value:.4f} | "
+                f"Params: {trial.params}"
+            )
+            # Force GPU cleanup between trials
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+            gc.collect()
+            
+            # Log memory usage
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                logger.info(f"GPU Memory: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
+        
         study.optimize(
             objective,
             n_trials=n_trials,
             show_progress_bar=True,
             n_jobs=1,
-            callbacks=[
-                lambda study, trial: logger.info(
-                    f"Trial {trial.number+1} finished | "
-                    f"F1 Macro: {-trial.value:.4f} | "
-                    f"Params: {trial.params}"
-                )
-            ]
+            callbacks=[trial_callback]
         )
 
         optuna_elapsed = time.time() - optuna_start_time
