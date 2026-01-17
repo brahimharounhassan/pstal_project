@@ -78,9 +78,7 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     logger.info("Merging LoRA adapters into base model...")
     merged_model = finetuned_model.merge_and_unload()
     
-    # Extract ONLY the encoder (RoBERTa/CamemBERT) - NOT the classification head
-    # The classification head was trained for 25-class token classification,
-    # but we want to train our own MLP classifier on top of embeddings
+    # Extract the encoder
     if hasattr(merged_model, 'roberta'):
         embedding_model = merged_model.roberta
     elif hasattr(merged_model, 'bert'):
@@ -88,7 +86,6 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     elif hasattr(merged_model, 'distilbert'):
         embedding_model = merged_model.distilbert
     else:
-        # Fallback: try to get the base model
         embedding_model = merged_model.base_model
     
     embedding_model.eval()
@@ -106,18 +103,19 @@ def main():
     parser.add_argument('--output', default='models/ssense_finetuned.pt', help='Output model file')
     parser.add_argument('--finetuned-model', default='models/', 
                         help='Path to fine-tuned model directory (peft_adapter_*)')
-    parser.add_argument('--n-epochs', type=int, default=50, help='Number of epochs')
-    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
-    parser.add_argument('--dropout', type=float, default=0.3, help='Dropout rate')
+    parser.add_argument('--n-epochs', type=int, default=30, help='Number of epochs')
+    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+    parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
-    parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu', 
-                        help='Device to use')
+    parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu', help='Device to use')
     
     args = parser.parse_args()
+
+    Util.init_seed(SEED)
     
     logger.info(f"Using device: {args.device}")
-    logger.info("Chargement du modèle fine-tuné...")
-    
+    logger.info(f"Loading fine-tuned model from: {args.finetuned_model}")    
+
     # Load fine-tuned model (returns the embedding model without classification head)
     embedding_model, model_name = load_finetuned_model(args.finetuned_model, args.device)
     
@@ -181,14 +179,14 @@ def main():
     label_vocab_dict = dict(label_vocab)
     
     checkpoint = {
-        'model_state': model.state_dict(),  # MLP weights
-        'embedding_model_state': embedding_model.state_dict(),  # Fine-tuned encoder weights
+        'model_state': model.state_dict(),
+        'embedding_model_state': embedding_model.state_dict(),
         'label_vocab': label_vocab_dict,
         'embedding_dim': embedding_dim,
         'num_labels': len(label_vocab),
         'dropout': args.dropout,
         'model_name': model_name,
-        'is_finetuned': True  # Flag to indicate this is a fine-tuned model
+        'is_finetuned': True 
     }
     
     torch.save(checkpoint, args.output)

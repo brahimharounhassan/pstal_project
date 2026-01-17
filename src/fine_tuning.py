@@ -120,7 +120,7 @@ def train_final_model(
 
     # Early stopping params
     patience = PATIENCE
-    best_val_accuracy = 0.0  # Changed from F1 macro to accuracy
+    best_val_accuracy = 0.0
     epochs_no_improve = 0
     train_losses = []
     val_losses = []
@@ -198,7 +198,7 @@ def train_final_model(
         avg_val_loss = val_loss_total / len(dev_loader)
         val_losses.append(avg_val_loss)
         
-        # Calculate metrics - ADDED macro F1
+        # Calculate metrics
         val_accuracy = accuracy_score(all_labels, all_predictions)
         val_f1_macro = f1_score(all_labels, all_predictions, average='macro', zero_division=0)
         val_f1_weighted = f1_score(all_labels, all_predictions, average='weighted', zero_division=0)
@@ -226,7 +226,7 @@ def train_final_model(
                     f"{optimizer.param_groups[0]['lr']:.8e},{datetime.now().isoformat()}\n"
                 )
 
-        # Early stopping check : based on accuracy (matches final evaluation metric)
+        # Early stopping check : based on accuracy
         if val_accuracy > best_val_accuracy:
             best_val_accuracy = val_accuracy
             best_epoch = epoch + 1
@@ -294,7 +294,7 @@ def train_final_model(
     training_elapsed = time.time() - training_start_time
     training_end_timestamp = datetime.now().isoformat()
     
-    # Detect actual device at end (may have changed on Colab if GPU quota exceeded)
+    # Detect actual device at end
     device_end = str(next(lora_model.parameters()).device)
     
     if epochs_no_improve < patience:
@@ -388,7 +388,6 @@ if __name__ == "__main__":
         # Find latest hyperparameters file 
         hp_files = glob.glob(str(Path(OUTPUT_PATH) / "best_hyperparameters*.json"))
         if not hp_files:
-            # Fallback to original files
             hp_files = glob.glob(str(Path(OUTPUT_PATH) / "best_hyperparameters_*.json"))
         
         if not hp_files:
@@ -467,7 +466,7 @@ if __name__ == "__main__":
             'model_name': model_name,
             'label2id': train_data_prep.label2id,
             'id2label': train_data_prep.id2label,
-            'target_upos': list(TARGET_UPOS),  # Convert set to list for JSON serialization
+            'target_upos': list(TARGET_UPOS),
             'merged': False,
             'lora_format': True,
             'timestamp': timestamp,

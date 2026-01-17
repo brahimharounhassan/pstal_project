@@ -1,0 +1,32 @@
+{
+  "best_f1_macro": 0.8277858176555717,
+  "best_params": {
+    "lr": 0.0004377029849194628,
+    "r": 8,
+    "lora_alpha": 27,
+    "use_dora": false,
+    "lora_dropout": 0.10040063297329826,
+    "bs": 8,
+    "weight_decay": 0.004707176986805552,
+    "warmup_ratio": 0.14372514653160762
+  },
+  "n_trials": 20,
+  "n_completed": 20,
+  "n_pruned": 12,
+  "n_failed": 0,
+  "best_trial_number": 12,
+  "timestamp": "2026-01-17_14-07-34",
+  "model_name": "almanach/camembert-base",
+  "target_upos": [
+    "PROPN",
+    "NUM",
+    "NOUN"
+  ],
+  "device_start": "cuda",
+  "device_end": "cuda",
+  "device_changed": false,
+  "optimization_start_time": "2026-01-17T13:17:38.585442",
+  "optimization_end_time": "2026-01-17T14:07:34.017468",
+  "optimization_duration_seconds": 2995.432027578354,
+  "optimization_duration_formatted": "49min 55s"
+}

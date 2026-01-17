@@ -101,3 +101,5 @@ DATA_TEST = ROOT_PATH / Path(config.dataset.test)
 TARGET_UPOS = {"NOUN", "PROPN", "NUM"}
 SUPERSENSE_COLUMN = "frsemcor:noun"
 
+SEED = 0
+

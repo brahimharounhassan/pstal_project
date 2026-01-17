@@ -17,7 +17,7 @@ from configs.config import *
 from src.utils import setup_logger, write_conllu_predictions
 from lib.conllulib import CoNLLUReader
 
-logger = setup_logger('PREDICT_BASELINE')
+logger = setup_logger('PREDICT_SSENSE')
 
 
 def predict_sentence(sentence, model, classifier, tokenizer, label_vocab_rev, target_upos, device='cpu', normalize=False):
@@ -125,6 +125,7 @@ def main():
         num_labels=num_labels,
         dropout=dropout
     ).to(args.device)
+    
     classifier.load_state_dict(checkpoint['model_state'])
     classifier.eval()
     

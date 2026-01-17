@@ -6,13 +6,13 @@ __pycache__/
 *.so
 .Python
 
-# Virtual environments
+# Virtual env.
 .venv/
 venv/
 env/
 ENV/
 
-# PyTorch models (fichiers lourds - ne pas commit)
+# PyTorch models
 *.pt
 *.pth
 *.ckpt
@@ -54,10 +54,7 @@ optuna_study.db-journal
 .DS_Store
 Thumbs.db
 
-# Enoncés (si vous ne voulez pas les partager)
-# enonce/
 
-# Anciens TPs (si non nécessaires)
 tp1/
 tp2/
 tp3/
@@ -73,6 +70,6 @@ enonce/*
 *.html
 
 
-peft_adapter/*
-models/*
-outputs/*
+# peft_adapter/*
+# models/*
+# outputs/*

@@ -76,47 +76,6 @@ class TuningDataPreparation:
         id2label = {i: label for label, i in label2id.items()}
         return label2id, id2label
     
-    def compute_class_weights(self) -> torch.Tensor:
-        """
-        Compute class weights for imbalanced dataset.
-        """
-        from collections import Counter
-        
-        # Collect only meaningful labels (target UPOS with actual supersense)
-        target_labels = []
-        for sent_id in self.sense_sent:
-            for i, label in enumerate(self.sense_sent[sent_id]):
-                upos = self.upos_sent[sent_id][i]
-                # Only include labels for target UPOS and skip special markers
-                if upos in self.target_upos and label not in ['_', '*']:
-                    target_labels.append(label)
-        
-        if not target_labels:
-            # Fallback: uniform weights
-            return torch.ones(len(self.label2id))
-        
-        # Count occurrences
-        label_counts = Counter(target_labels)
-        total_samples = len(target_labels)
-        
-        # Compute inverse frequency weights
-        weights = torch.zeros(len(self.label2id))
-        for label, count in label_counts.items():
-            if label in self.label2id:
-                label_id = self.label2id[label]
-                weights[label_id] = total_samples / (len(label_counts) * count)
-        
-        # For labels not in target set, assign weight 0 (will be masked by ignore_index)
-        for label in ['_', '*']:
-            if label in self.label2id:
-                weights[self.label2id[label]] = 0.0
-        
-        # Normalize weights (excluding zero weights)
-        non_zero_mask = weights > 0
-        if non_zero_mask.sum() > 0:
-            weights[non_zero_mask] = weights[non_zero_mask] / weights[non_zero_mask].sum() * non_zero_mask.sum()
-        
-        return weights
 
     def create_dataloader(self, tokenizer: AutoTokenizer, batch_size: int, shuffle_mode: bool = True) -> DataLoader:
         """Create DataLoader with properly prepared dataset."""

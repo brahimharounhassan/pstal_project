@@ -14,14 +14,13 @@ Aix Marseille University and Centrale Mediterranée.
 - python src/train_ssense.py \
   --train data/sequoia/sequoia-ud.parseme.frsemcor.simple.train \
   --dev data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
-  --output models/ssense_base.pt \
+  --output models/ssense_baseline.pt \
   --model-name almanach/camembert-base \
-  --epochs 20 \
+  --n-epochs 20 \
   --batch-size 64 \
   --dropout 0.3 \
   --lr 0.001 \
   <!-- --hidden-dim 256 \ -->
-
 
 - python src/predict_ssense.py \
   --model models/ssense_base.pt \
@@ -36,32 +35,27 @@ Aix Marseille University and Centrale Mediterranée.
     --train data/sequoia/sequoia-ud.parseme.frsemcor.simple.train \
     --upos-filter NOUN,PROPN,NUM
 
-### FINE TUNED
+### FINE TUNED WITHOUT DORA
 
-- python src/train_finetuned.py \
+python src/train_finetuned.py \
   --train data/sequoia/sequoia-ud.parseme.frsemcor.simple.train \
   --dev data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
-  --output models/ssense_finetuned.pth \
-  --finetuned-model models/final_model_epochs_50.pth \
-  --epochs 20 \
-  --batch-size 64 \
-  --dropout 0.3 \
-  --lr 0.001 \
+  --output models/ssense_finetuned_dora.pt \
+  --finetuned-model models/peft_adapter_dora/ \
+  --n-epochs 10 \
+  --batch-size 32
 
 
-- python src/predict_ssense.py \
+python src/predict_ssense.py \
   --input data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
   --finetuned-model models/final_model_epochs_50.pt \
   --output predictions/ssense_finetuned_dev.conllu \
   --normalize
+
+
+
     
 
-- python lib/evaluate.py \
-    --pred predictions/ssense_finetuned_dev.conllu \
-    --gold data/sequoia/sequoia-ud.parseme.frsemcor.simple.dev \
-    --tagcolumn frsemcor:noun \
-    --train data/sequoia/sequoia-ud.parseme.frsemcor.simple.train \
-    --upos-filter NOUN PROPN NUM
 
 
 Modèle LoRA fine-tuné (figé : Le backbone (CamemBERT original) est gelé seules les petites matrices LoRA apprennent)

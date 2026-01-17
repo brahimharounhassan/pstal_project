@@ -71,7 +71,7 @@ def train_eval_model(
     # Hyperparameters - CamemBERT + LoRA
     lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
     r = trial.suggest_int("r", 8, 32)
-    alpha = trial.suggest_int("lora_alpha", 8, 64) # r * 2 
+    alpha = trial.suggest_int("lora_alpha", 8, 64) 
     dora = trial.suggest_categorical("use_dora", [True, False])
     dropout = trial.suggest_float("lora_dropout", 0.0, 0.3)
     bs = trial.suggest_categorical('bs', [8, 16, 32, 64, 128])
@@ -132,7 +132,7 @@ def train_eval_model(
         # Mixed precision
         scaler = GradScaler()
 
-        best_val_accuracy = 0.0  # Optimize accuracy (matches final evaluation)
+        best_val_accuracy = 0.0
 
         for epoch in range(epochs):
             # Training
@@ -240,8 +240,6 @@ def train_eval_model(
             del scheduler
         if 'scaler' in locals():
             del scaler
-        # if 'class_weights_device' in locals():
-        #     del class_weights_device
         
         # Force GPU memory cleanup
         if torch.cuda.is_available():
