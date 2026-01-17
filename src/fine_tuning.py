@@ -80,7 +80,7 @@ def train_final_model(
         lora_dropout=best_hyperparameters['lora_dropout'],
         bias="none",
         task_type="TOKEN_CLS",
-        use_dora= True#best_hyperparameters.get('use_dora', False),
+        use_dora= True,#best_hyperparameters.get('use_dora', False),
     )
 
     lora_model = get_peft_model(base_model, lora_config)
@@ -408,7 +408,7 @@ if __name__ == "__main__":
         n_epochs = args.n_epochs
 
         tokenizer = AutoTokenizer.from_pretrained(model_name)
-        batch_size = 32 # best_hyperparameters['bs']
+        batch_size = best_hyperparameters['bs']
 
         ModelConfig.batch_size = batch_size
 
