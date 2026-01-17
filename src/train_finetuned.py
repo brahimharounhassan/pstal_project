@@ -59,8 +59,11 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     base_config = AutoConfig.from_pretrained(model_name)
     base_config.num_labels = num_labels
     
-    # Load as AutoModel (encoder only) since fine_tuning.py now uses AutoModel
-    base_model = AutoModel.from_pretrained(model_name)
+    # Load as AutoModelForTokenClassification since it was fine-tuned with task_type="TOKEN_CLS"
+    base_model = AutoModelForTokenClassification.from_pretrained(
+        model_name,
+        config=base_config
+    )
     
     # Load LoRA adapters
     finetuned_model = PeftModel.from_pretrained(base_model, finetuned_model_path)
@@ -75,8 +78,19 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     logger.info("Merging LoRA adapters into base model...")
     merged_model = finetuned_model.merge_and_unload()
     
-    # The merged_model IS the encoder (AutoModel), no need to extract .roberta
-    embedding_model = merged_model
+    # Extract ONLY the encoder (RoBERTa/CamemBERT) - NOT the classification head
+    # The classification head was trained for 25-class token classification,
+    # but we want to train our own MLP classifier on top of embeddings
+    if hasattr(merged_model, 'roberta'):
+        embedding_model = merged_model.roberta
+    elif hasattr(merged_model, 'bert'):
+        embedding_model = merged_model.bert
+    elif hasattr(merged_model, 'distilbert'):
+        embedding_model = merged_model.distilbert
+    else:
+        # Fallback: try to get the base model
+        embedding_model = merged_model.base_model
+    
     embedding_model.eval()
     
     logger.info("LoRA adapters merged successfully")

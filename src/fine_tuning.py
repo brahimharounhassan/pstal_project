@@ -59,8 +59,7 @@ def train_final_model(
     epochs: int = 30,
     device: str = "cuda",
     accumulation_steps: int = 1,
-    metrics_file: str = None,
-    class_weights: torch.Tensor = None
+    metrics_file: str = None
 ):
     """
     Train final model with best hyperparameters.
@@ -70,18 +69,18 @@ def train_final_model(
     config = AutoConfig.from_pretrained(model_name)
     config.num_labels = num_labels
 
-    # IMPORTANT: Use AutoModel (encoder only) instead of AutoModelForTokenClassification
-    # We want to fine-tune embeddings, not train an end-to-end classifier
-    base_model = AutoModel.from_pretrained(model_name)
+    # Base model - use AutoModelForTokenClassification for proper token classification
+    base_model = AutoModelForTokenClassification.from_pretrained(model_name, config=config)
 
-    # LoRA config - REMOVED task_type since we're using AutoModel
+    # LoRA config
     lora_config = LoraConfig(
         r=best_hyperparameters['r'],
         lora_alpha=best_hyperparameters.get('lora_alpha', best_hyperparameters['r'] * 2),
         target_modules=["query", "value", "key"],
         lora_dropout=best_hyperparameters['lora_dropout'],
         bias="none",
-        use_dora=best_hyperparameters.get('use_dora', False)
+        task_type="TOKEN_CLS",
+        use_dora=best_hyperparameters.get('use_dora', False),
     )
 
     lora_model = get_peft_model(base_model, lora_config)
@@ -118,15 +117,10 @@ def train_final_model(
 
     # Mixed precision
     scaler = GradScaler()
-    
-    # Move class weights to device if provided
-    if class_weights is not None:
-        class_weights = class_weights.to(device)
-        logger.info(f"Using class weights for imbalanced data")
 
     # Early stopping params
     patience = PATIENCE
-    best_val_f1_macro = 0.0
+    best_val_accuracy = 0.0  # Changed from F1 macro to accuracy
     epochs_no_improve = 0
     train_losses = []
     val_losses = []
@@ -155,24 +149,8 @@ def train_final_model(
             input_ids, attention_mask, labels = [x.to(device) for x in batch]
 
             with autocast(device_type=device):
-                # AutoModel doesn't have built-in loss computation
-                # We need to add our own classification head
-                outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask)
-                
-                # Get last hidden state
-                hidden_states = outputs.last_hidden_state  # (batch, seq_len, hidden_dim)
-                
-                # Simple classification head (will be replaced by MLP later)
-                if not hasattr(lora_model, 'classifier_head'):
-                    lora_model.classifier_head = torch.nn.Linear(hidden_states.size(-1), num_labels).to(device)
-                
-                logits = lora_model.classifier_head(hidden_states)  # (batch, seq_len, num_labels)
-                
-                # Compute loss
-                loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
-                loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
-                
-                loss = loss / accumulation_steps
+                outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                loss = outputs.loss / accumulation_steps
 
             scaler.scale(loss).backward()
 
@@ -202,19 +180,12 @@ def train_final_model(
                 input_ids, attention_mask, labels = [x.to(device) for x in batch]
                 
                 with autocast(device_type=device):
-                    outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask)
-                    hidden_states = outputs.last_hidden_state
-                    
-                    logits = lora_model.classifier_head(hidden_states)
-                    
-                    # Compute loss
-                    loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
-                    loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
+                    outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
                 
-                val_loss_total += loss.item()
+                val_loss_total += outputs.loss.item()
                 
                 # Get predictions
-                predictions = torch.argmax(logits, dim=-1)
+                predictions = torch.argmax(outputs.logits, dim=-1)
                 
                 # Flatten and filter out ignored indices (-100)
                 active_labels = labels.view(-1)
@@ -255,9 +226,9 @@ def train_final_model(
                     f"{optimizer.param_groups[0]['lr']:.8e},{datetime.now().isoformat()}\n"
                 )
 
-        # Early stopping check : based on macro F1
-        if val_f1_macro > best_val_f1_macro:
-            best_val_f1_macro = val_f1_macro
+        # Early stopping check : based on accuracy (matches final evaluation metric)
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
             best_epoch = epoch + 1
             epochs_no_improve = 0
             
@@ -266,7 +237,7 @@ def train_final_model(
             if best_model_fname is None:
                 best_model_fname = CHECKPOINT_PATH / "best_model_checkpoint"
             
-            logger.info(f"Saving checkpoint: epoch {epoch+1}, F1 macro={val_f1_macro:.4f}")
+            logger.info(f"Saving checkpoint: epoch {epoch+1}, Accuracy={val_accuracy:.4f}, F1 macro={val_f1_macro:.4f}")
             
             # Save LoRA adapters
             lora_model.save_pretrained(best_model_fname)
@@ -335,7 +306,7 @@ def train_final_model(
         logger.warning(f"Device changed during training: {device} --> {device_end}")
     
     logger.info(f"Best epoch: {best_epoch}")
-    logger.info(f"Best F1 Macro: {best_val_f1_macro:.4f}")
+    logger.info(f"Best Accuracy: {best_val_accuracy:.4f}")
 
     Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
     
@@ -355,15 +326,14 @@ def train_final_model(
         with open(best_model_fname / "checkpoint_metadata.json", 'r') as f:
             checkpoint_metadata = json.load(f)
         
-        # Reload base model (encoder only)
-        base_model = AutoModel.from_pretrained(model_name)
+        # load base model
+        config = AutoConfig.from_pretrained(model_name)
+        config.num_labels = num_labels
+        base_model = AutoModelForTokenClassification.from_pretrained(model_name, config=config)
         
         # Load LoRA adapters
         lora_model = PeftModel.from_pretrained(base_model, best_model_fname)
         lora_model.to(device)
-        
-        # Restore classifier head
-        lora_model.classifier_head = torch.nn.Linear(base_model.config.hidden_size, num_labels).to(device)
         
         logger.info(f"Loaded best model from epoch {checkpoint_metadata['epoch']}")
     else:
@@ -379,7 +349,7 @@ def train_final_model(
         'device_end': device_end,
         'device_changed': (device != device_end),
         'best_epoch': best_epoch,
-        'best_f1_macro': best_val_f1_macro
+        'best_accuracy': best_val_accuracy
     }
 
     return lora_model
@@ -445,7 +415,7 @@ if __name__ == "__main__":
         logger.info(f"Training configuration:")
         logger.info(f"Model: {model_name}")
         logger.info(f"Epochs: {n_epochs}")
-        # logger.info(f"Batch size: {batch_size}")
+        logger.info(f"Batch size: {batch_size}")
         logger.info(f"Device: {DEVICE}")
         logger.info(f"Number of labels: {len(train_data_prep.label2id)}")
         logger.info(f"Target UPOS: {TARGET_UPOS}")
@@ -462,11 +432,6 @@ if __name__ == "__main__":
             shuffle_mode=False
         )
         
-        # Compute class weights
-        class_weights = train_data_prep.compute_class_weights()
-        logger.info(f"Class weights: Min={class_weights.min():.3f}, Max={class_weights.max():.3f}")
-        logger.info(f"Non-zero weights: {(class_weights > 0).sum()}/{len(class_weights)}")
-
         model = train_final_model(
             train_loader=train_loader,
             dev_loader=dev_loader,
@@ -479,8 +444,7 @@ if __name__ == "__main__":
             epochs=n_epochs,
             device=DEVICE,
             accumulation_steps=ACCUMULATION_STEPS,
-            metrics_file=metrics_file,
-            class_weights=class_weights
+            metrics_file=metrics_file
         )
 
         Path(MODEL_PATH).mkdir(parents=True, exist_ok=True)
@@ -515,7 +479,7 @@ if __name__ == "__main__":
             'training_duration_seconds': model.training_info['elapsed_seconds'],
             'training_duration_formatted': model.training_info['elapsed_formatted'],
             'best_epoch': model.training_info['best_epoch'],
-            'best_f1_macro': model.training_info['best_f1_macro']
+            'best_accuracy': model.training_info['best_accuracy']
         }
         
         with open(final_model_dir / "training_metadata.json", 'w') as f:

@@ -73,4 +73,6 @@ enonce/*
 *.html
 
 
-*/peft_adapter
+peft_adapter/*
+models/*
+outputs/*

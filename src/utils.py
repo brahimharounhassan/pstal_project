@@ -171,7 +171,8 @@ class TuningDataPreparation:
                     supersense = supersense_labels[word_id]
                     
                     # Only assign label if target UPOS and not special marker
-                    if upos in self.target_upos and supersense not in ['_', '*']:
+                    # Note: "*" is now included as a valid label (means "generic/no specific supersense")
+                    if upos in self.target_upos and supersense != '_':
                         labels.append(self.label2id[supersense])
                     else:
                         labels.append(-100)

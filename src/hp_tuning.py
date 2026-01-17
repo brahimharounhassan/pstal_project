@@ -57,7 +57,6 @@ def train_eval_model(
     dev_data_prep: TuningDataPreparation,
     num_labels: int,
     model_name: str,
-    class_weights: torch.Tensor,
     epochs: int = 5,
     device: str = "cuda",
     accumulation_steps: int = None
@@ -132,11 +131,8 @@ def train_eval_model(
 
         # Mixed precision
         scaler = GradScaler()
-        
-        # Move class weights to device
-        class_weights_device = class_weights.to(device)
 
-        best_val_f1_macro = 0.0
+        best_val_accuracy = 0.0  # Optimize accuracy (matches final evaluation)
 
         for epoch in range(epochs):
             # Training
@@ -149,12 +145,7 @@ def train_eval_model(
 
                 with autocast(device_type=device):
                     outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-                    
-                    # Apply class weights
-                    logits = outputs.logits
-                    loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights_device, ignore_index=-100)
-                    loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
-                    loss = loss / accumulation_steps
+                    loss = outputs.loss / accumulation_steps
 
                 scaler.scale(loss).backward()
 
@@ -188,16 +179,11 @@ def train_eval_model(
                     
                     with autocast(device_type=device):
                         outputs = lora_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-                        
-                        # Compute loss with class weights
-                        logits = outputs.logits
-                        loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights_device, ignore_index=-100)
-                        loss = loss_fct(logits.view(-1, num_labels), labels.view(-1))
                     
-                    val_loss += loss.item()
+                    val_loss += outputs.loss.item()
                     
                     # Get predictions
-                    predictions = torch.argmax(logits, dim=-1)
+                    predictions = torch.argmax(outputs.logits, dim=-1)
                     active_labels = labels.view(-1)
                     active_predictions = predictions.view(-1)
                     mask = active_labels != -100
@@ -212,7 +198,7 @@ def train_eval_model(
             val_f1_macro = f1_score(all_labels, all_predictions, average='macro', zero_division=0)
             val_f1_weighted = f1_score(all_labels, all_predictions, average='weighted', zero_division=0)
             
-            best_val_f1_macro = max(best_val_f1_macro, val_f1_macro)
+            best_val_accuracy = max(best_val_accuracy, val_accuracy)
 
             # Clear predictions and labels to free memory
             del all_predictions, all_labels
@@ -227,12 +213,12 @@ def train_eval_model(
             )
 
             # Report for pruning (negative because Optuna minimizes)
-            trial.report(-val_f1_macro, epoch+1)
+            trial.report(-val_accuracy, epoch+1)
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
-        # Return negative macro F1 (Optuna minimizes, we want to maximize)
-        return -best_val_f1_macro
+        # Return negative accuracy (Optuna minimizes, we want to maximize)
+        return -best_val_accuracy
         
     except Exception as e:
         logger.error(f"Trial {trial.number+1} failed: {e}")
@@ -254,8 +240,8 @@ def train_eval_model(
             del scheduler
         if 'scaler' in locals():
             del scaler
-        if 'class_weights_device' in locals():
-            del class_weights_device
+        # if 'class_weights_device' in locals():
+        #     del class_weights_device
         
         # Force GPU memory cleanup
         if torch.cuda.is_available():
@@ -293,11 +279,6 @@ if __name__ == "__main__":
         target_upos=TARGET_UPOS
     )
     
-    # Compute class weights ONCE (not in every trial)
-    class_weights = train_data_prep.compute_class_weights()
-    logger.info(f"Class weights computed. Min: {class_weights.min():.3f}, Max: {class_weights.max():.3f}")
-    logger.info(f"Non-zero weights: {(class_weights > 0).sum()}/{len(class_weights)}")
-
     try:
         logger.info("Hyperparameter tuning with Optuna")
 
@@ -321,7 +302,6 @@ if __name__ == "__main__":
                 dev_data_prep=dev_data_prep,
                 num_labels=len(train_data_prep.label2id),
                 model_name=model_name,
-                class_weights=class_weights,
                 epochs=n_epoch,
                 device=device,
                 accumulation_steps=ACCUMULATION_STEPS
