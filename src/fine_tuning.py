@@ -81,6 +81,7 @@ def train_final_model(
         bias="none",
         task_type="TOKEN_CLS",
         use_dora= True,#best_hyperparameters.get('use_dora', False),
+         use_rslora=True
     )
 
     lora_model = get_peft_model(base_model, lora_config)
