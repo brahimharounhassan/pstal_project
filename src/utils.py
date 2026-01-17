@@ -199,9 +199,8 @@ class SuperSenseDataPreparation:
     
     def __init__(self, tokenizer: AutoTokenizer, model: AutoModel, device: str, normalize_embeddings: bool = False):
         self.tokenizer = tokenizer
-        self.model = model.to(device)
         self.device = device
-        self.model.eval()
+        self.model = model
         self.normalize_embeddings = normalize_embeddings
 
     def _build_label_vocab(self, labels: list) -> dict:
@@ -221,60 +220,58 @@ class SuperSenseDataPreparation:
         embeddings_list = []
         labels_list = []
 
+        self.model.eval()
+        self.model = self.model.to(self.device)
+
         with torch.no_grad():
-            for sent in tqdm(sentences, desc="Extracting embeddings", ncols=80):
+            for sent in tqdm(sentences, desc="Extracting embeddings", ncols=80, colour="white"):
                 words = [tok["form"] for tok in sent]
                 upos_tags = [tok["upos"] for tok in sent]
                 supersense_tags = [tok.get(SUPERSENSE_COLUMN, "*") for tok in sent]
 
-                tok = self.tokenizer(
+                tok_sent = self.tokenizer(
                     words,
                     is_split_into_words=True,
                     return_tensors="pt",
-                    truncation=True
+                    # truncation=True
                 )
 
-                word_ids = tok.word_ids()
-                tok = {k: v.to(self.device) for k, v in tok.items()}
+                word_ids = tok_sent.word_ids()
+                tok_sent = {k: v.to(self.device) for k, v in tok_sent.items()}
 
-                emb_sent = self.model(**tok)
+                emb_sent = self.model(**tok_sent)
                 
-                # # Handle both AutoModel and AutoModelForTokenClassification outputs
-                # if hasattr(emb_sent, 'hidden_states') and emb_sent.hidden_states is not None:
-                #     # For models with output_hidden_states=True
-                #     hidden = emb_sent.hidden_states[-1][0]  # Last layer, first batch
-                # elif hasattr(emb_sent, 'last_hidden_state'):
-                #     # For AutoModel
-                hidden = emb_sent.last_hidden_state[0]  # [T, H]
-                # else:
-                #     # For AutoModelForTokenClassification, extract from base model
-                #     if hasattr(self.model, 'base_model'):
-                #         # LoRA model: need to get embeddings from the encoder
-                #         hidden = self.model.base_model.model.roberta(**tok).last_hidden_state[0]
-                #     else:
-                #         raise ValueError("Cannot extract hidden states from model")
-
+                # Extract last hidden state (contextual embeddings)
+                # For encoder-only models (roberta), use last_hidden_state directly
+                if hasattr(emb_sent, 'last_hidden_state'):
+                    last_hidden_state = emb_sent.last_hidden_state[0]
+                elif hasattr(emb_sent, 'hidden_states') and emb_sent.hidden_states is not None:
+                    last_hidden_state = emb_sent.hidden_states[-1][0]
+                else:
+                    raise ValueError("Model output doesn't have last_hidden_state or hidden_states")
+                
                 for word_idx in range(len(words)):
                     if upos_tags[word_idx] not in target_upos:
                         continue
 
-                    sub_idx = [i for i, w_id in enumerate(word_ids) if w_id == word_idx]
-                    if not sub_idx:
+                    subtoken_indices = [i for i, w_id in enumerate(word_ids) if w_id == word_idx]
+                    if not subtoken_indices:
                         continue
 
                     # Average subword embeddings
-                    word_emb = hidden[sub_idx].mean(dim=0)
+                    word_embeddings = last_hidden_state[subtoken_indices]
+                    avg_embedding = word_embeddings.mean(dim=0)
                     
                     # Optional normalization (use with caution)
                     if self.normalize_embeddings:
-                        word_emb = torch.nn.functional.normalize(word_emb, dim=-1)
-
-                    embeddings_list.append(word_emb.cpu())
+                        avg_embedding = torch.nn.functional.normalize(avg_embedding, dim=-1)
+                        
+                    embeddings_list.append(avg_embedding.cpu())
                     labels_list.append(supersense_tags[word_idx])
 
         return embeddings_list, labels_list
 
-    def prepare_data(self, in_file: str, label_vocab: dict = None):
+    def prepare_data(self, in_file: str):
         """Prepare data from CoNLL-U file."""
         logger = setup_logger("Data preparation", log_dir=LOG_PATH)
         logger.info(f"Loading corpus from {in_file}")
@@ -286,8 +283,7 @@ class SuperSenseDataPreparation:
         logger.info(f"Extracted {len(embeddings_list)} embeddings")
 
         # Use provided vocab or build new one
-        if label_vocab is None:
-            label_vocab = self._build_label_vocab(labels_list)
+        label_vocab = self._build_label_vocab(labels_list)
         
         labels = [label_vocab.get(lbl, label_vocab.get('*', 0)) for lbl in labels_list]
 

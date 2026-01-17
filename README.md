@@ -119,3 +119,18 @@ output = W × input + (B × A) × input  # 1 normalisation
 
 # DoRA
 output = magnitude × normalize(W + B × A) × input  # 2 normalisations + calcul magnitude
+
+
+
+Input tokens
+    ↓
+[ENCODEUR] (roberta) → Produit les embeddings contextuels
+    ↓                   Dimension: (batch, seq_len, 768)
+    |
+    ├─→ [Embeddings contextuels] ← Ce qu'on veut !
+    |
+    ↓
+[TÊTE CLASSIFICATION] (linear layer)
+    ↓
+Logits/Prédictions
+Dimension: (batch, seq_len, 25)

@@ -85,7 +85,7 @@ def main():
     
     args = parser.parse_args()
     
-    logger.info(f"Loading baseline model from: {args.model}")
+    logger.info(f"Loading model from: {args.model}")
     
     # Load checkpoint
     checkpoint = torch.load(args.model, map_location=args.device, weights_only=False)
@@ -95,15 +95,29 @@ def main():
     embedding_dim = checkpoint['embedding_dim']
     num_labels = checkpoint['num_labels']
     dropout = checkpoint['dropout']
+    is_finetuned = checkpoint.get('is_finetuned', False)
     
     logger.info(f"Base model: {model_name}")
     logger.info(f"Number of labels: {num_labels}")
     logger.info(f"Embedding dimension: {embedding_dim}")
     
-    # Load transformer model (frozen)
+    if is_finetuned:
+        logger.info("Using FINE-TUNED embeddings")
+        
+        model = AutoModel.from_pretrained(model_name).to(args.device)
+        model.load_state_dict(checkpoint['embedding_model_state'], strict=False)
+        model.eval()
+        logger.info("Fine-tuned encoder loaded locally.")
+    else:
+        logger.info("Using BASELINE frozen embeddings")
+        
+        # Load baseline frozen model
+        model = AutoModel.from_pretrained(model_name).to(args.device)
+        model.eval()
+        logger.info("Baseline model loaded from HuggingFace")
+    
+    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name).to(args.device)
-    model.eval()
     
     # Load classifier
     classifier = SuperSenseClassifier(
@@ -114,7 +128,7 @@ def main():
     classifier.load_state_dict(checkpoint['model_state'])
     classifier.eval()
     
-    logger.info("Models loaded successfully")
+    logger.info("Classifier loaded successfully")
     
     # Create reverse label vocabulary
     label_vocab_rev = {v: k for k, v in label_vocab.items()}
@@ -144,7 +158,7 @@ def main():
     
     # Write predictions to file
     with open(args.input, 'r', encoding='utf-8') as f:
-        reader = CoNLLUReader(f)  # Re-create reader to get header
+        reader = CoNLLUReader(f)
         num_sentences, num_words, num_predicted = write_conllu_predictions(
             sentences, 
             predictions_list, 

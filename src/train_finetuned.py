@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import argparse
-from transformers import AutoTokenizer, AutoConfig, AutoModelForTokenClassification
+from transformers import AutoTokenizer, AutoConfig, AutoModel, AutoModelForTokenClassification
 from peft import LoraConfig, get_peft_model, PeftModel
 import json
 
@@ -27,192 +27,73 @@ logger = setup_logger('TRAIN SSENSE FINE-TUNED')
 
 def load_finetuned_model(finetuned_model_path: str, device: str):
     """
-    Loads a fine-tuned model from the specified path, handling both LoRA and merged formats.
+    Loads a fine-tuned model from the specified path.
     """
 
-    logger.info(f"Chargement du modèle fine-tuné: {finetuned_model_path}")
-    
-    # Check if it's a directory (new format) or a .pt file (old format)
     finetuned_path = Path(finetuned_model_path)
     
-    if finetuned_path.is_dir():
-        adapter_config_file = finetuned_path / "adapter_config.json"
-        metadata_file = finetuned_path / "training_metadata.json"
-        
-        if not adapter_config_file.exists() and not metadata_file.exists():
-            logger.info(f"No adapter found in {finetuned_path}, searching for peft_adapter_* subdirectories...")
-            
-            # Find all peft_adapter_* directories
-            peft_dirs = list(finetuned_path.glob("peft_adapter_*"))
-            
-            if not peft_dirs:
-                # Also try checkpoints
-                checkpoint_dir = finetuned_path / "checkpoints" / "best_model_checkpoint"
-                if checkpoint_dir.exists():
-                    logger.info(f"Found checkpoint: {checkpoint_dir}")
-                    finetuned_path = checkpoint_dir
-                else:
-                    raise FileNotFoundError(
-                        f"No peft_adapter_* directories found in {finetuned_model_path}. "
-                        f"Please specify the exact model directory."
-                    )
-            else:
-                # Sort by modification time (most recent first)
-                peft_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                finetuned_path = peft_dirs[0]
-                logger.info(f"Found {len(peft_dirs)} peft_adapter directories")
-                logger.info(f"Loading most recent: {finetuned_path.name}")
-        
-        # Now load from the resolved path
-        metadata_file = finetuned_path / "training_metadata.json"
-        is_lora_format = False
-        model_name = None
-        
-        if metadata_file.exists():
-            with open(metadata_file, 'r') as f:
-                metadata = json.load(f)
-            logger.info(f"Model trained on: {metadata.get('timestamp', 'unknown')}")
-            logger.info(f"Number of labels: {metadata.get('num_labels')}")
-            
-            # Log training device info
-            device_start = metadata.get('training_device_start')
-            device_end = metadata.get('training_device_end')
-            device_changed = metadata.get('training_device_changed', False)
-            
-            if device_start:
-                logger.info(f"Training device: {device_start} → {device_end}")
-            
-            # Log training duration
-            duration = metadata.get('training_duration_formatted')
-            if duration:
-                logger.info(f"Training duration: {duration}")
-            
-            # Log best metrics
-            best_f1 = metadata.get('best_f1_macro')
-            best_epoch = metadata.get('best_epoch')
-            if best_f1:
-                logger.info(f"Best F1 macro: {best_f1:.4f} (epoch {best_epoch})")
-            
-            is_lora_format = metadata.get('lora_format', False)
-            model_name = metadata.get('model_name')
-        
-        # Check if it's a LoRA model (PeftModel format)
-        adapter_config_file = finetuned_path / "adapter_config.json"
-        if adapter_config_file.exists() or is_lora_format:
-            logger.info("Loading LoRA model using PeftModel.from_pretrained()")
-            
-            # Load base model first
-            if not model_name:
-                # Try to read from adapter config
-                with open(adapter_config_file, 'r') as f:
-                    adapter_config = json.load(f)
-                model_name = adapter_config.get('base_model_name_or_path', 'almanach/camembert-base')
-            
-            logger.info(f"Base model: {model_name}")
-            
-            # Load base model config with correct num_labels from metadata
-            num_labels = metadata.get('num_labels', 25)
-            logger.info(f"Loading base model with num_labels={num_labels}")
-            
-            base_config = AutoConfig.from_pretrained(model_name)
-            base_config.num_labels = num_labels
-            base_model = AutoModelForTokenClassification.from_pretrained(
-                model_name,
-                config=base_config
-            )
-            
-            # Load LoRA adapters
-            lora_model = PeftModel.from_pretrained(base_model, finetuned_model_path)
-            lora_model = lora_model.to(device)
-            lora_model.eval()
-            
-            logger.info(f"LoRA model loaded successfully")
-            logger.info(f"Config: hidden_size={lora_model.config.hidden_size}")
-            
-            # Extract the RoBERTa/CamemBERT model (with embeddings + encoder)
-            # NOT just the encoder - we need the full model for input processing
-            finetuned_model = lora_model.base_model.roberta
-            finetuned_model.eval()
-            
-            # Load tokenizer
-            tokenizer = AutoTokenizer.from_pretrained(finetuned_model_path)
-            
-            return finetuned_model, model_name
-        
-        else:
-            # Merged model format (old but still valid)
-            logger.info("Loading merged model using from_pretrained() (Hugging Face format)")
-            
-            merged_model = AutoModelForTokenClassification.from_pretrained(finetuned_model_path)
-            tokenizer = AutoTokenizer.from_pretrained(finetuned_model_path)
-            
-            # Get model name from config
-            model_name = merged_model.config._name_or_path
-            
-            logger.info(f"Model loaded: {model_name}")
-            logger.info(f"Config: hidden_size={merged_model.config.hidden_size}")
-            
-            # Extract the encoder from the merged model
-            finetuned_encoder = merged_model.roberta.encoder
-            finetuned_encoder = finetuned_encoder.to(device)
-            finetuned_encoder.eval()
-            
-            return finetuned_encoder, model_name
+    adapter_config_file = finetuned_path / "adapter_config.json"
+    metadata_file = finetuned_path / "training_metadata.json"
     
-    else:
-        # Old format: Load from .pt checkpoint (backward compatibility)
-        logger.info("Loading model from .pt checkpoint (legacy format)")
+    if not adapter_config_file.exists() and not metadata_file.exists():
+        # Find all peft_adapter_* directories
+        peft_dirs = list(finetuned_path.glob("peft_adapter*"))
         
-        checkpoint = torch.load(finetuned_model_path, map_location=device)
-        
-        model_name = checkpoint['model_name']
-        hyperparameters = checkpoint['hyperparameters']
-        num_labels = checkpoint['num_labels']
-        
-        logger.info(f"Finetuned model: {model_name}")
-        logger.info(f"Labels num: {num_labels}")
-        logger.info(f"Hyperparams LoRA: r={hyperparameters['r']}, alpha={hyperparameters['lora_alpha']}")
-        
-        config = AutoConfig.from_pretrained(model_name)
-        config.num_labels = num_labels
-        base_model = AutoModelForTokenClassification.from_pretrained(model_name, config=config)
-        
-        lora_config = LoraConfig(
-            r=hyperparameters['r'],
-            lora_alpha=hyperparameters['lora_alpha'],
-            target_modules=["query", "value", "key"],
-            lora_dropout=hyperparameters['lora_dropout'],
-            bias="none",
-            task_type="TOKEN_CLS",
-            use_dora=hyperparameters.get('use_dora', False),
-            use_rslora=hyperparameters.get('use_rslora', False)
-        )
-        
-        lora_model = get_peft_model(base_model, lora_config)
-
-        # To Freeze backbone parameters
-        for name, param in lora_model.named_parameters():
-            if "lora_" not in name:
-                param.requires_grad = False
-        
-        lora_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
-        lora_model.eval()
-        
-        logger.info("LoRa weights loaded (legacy format)")
-        
-        # Extract the basic transformer (RoBERTa) from the model
-        finetuned_model = lora_model.roberta.encoder
-        finetuned_model = finetuned_model.to(device)
-        finetuned_model.eval()
-        
-        return finetuned_model, model_name
-
+        # get the most recent adapter directory
+        peft_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        finetuned_path = peft_dirs[0]
+        logger.info(f"Loading fine-tuned model from: {finetuned_model_path}/{finetuned_path.name}")
+    
+    # METADATA
+    metadata_file = finetuned_path / "training_metadata.json"
+    
+    with open(metadata_file, 'r') as f:
+        metadata = json.load(f)
+    
+    model_name = metadata.get('model_name')
+    
+    # Load base model config
+    num_labels = metadata.get('num_labels', 25)
+    logger.info(f"Base model: {model_name}")
+    
+    base_config = AutoConfig.from_pretrained(model_name)
+    base_config.num_labels = num_labels
+    
+    # Load as AutoModelForTokenClassification since it was fine-tuned with task_type="TOKEN_CLS"
+    base_model = AutoModelForTokenClassification.from_pretrained(
+        model_name,
+        config=base_config
+    )
+    
+    # Load LoRA adapters
+    finetuned_model = PeftModel.from_pretrained(base_model, finetuned_model_path)
+    finetuned_model = finetuned_model.to(device)
+    finetuned_model.eval()
+    
+    logger.info(f"LoRA model loaded successfully")
+    logger.info(f"Config: hidden_size={finetuned_model.config.hidden_size}")
+    
+    # Merge LoRA adapters into base model to get standard weights
+    # This combines the LoRA weights with the base weights, removing PEFT wrappers
+    logger.info("Merging LoRA adapters into base model...")
+    merged_model = finetuned_model.merge_and_unload()
+    
+    # Extract the RoBERTa/CamemBERT encoder (without classification head) for embeddings
+    # We only want the base model (roberta) not the classifier
+    embedding_model = merged_model.roberta
+    embedding_model.eval()
+    
+    logger.info("LoRA adapters merged successfully")
+    
+    return embedding_model, model_name
+    
+    
 
 def main():
     parser = argparse.ArgumentParser(description='Train super-sense classifier with fine-tuned model')
     parser.add_argument('--train', required=True, help='Path to training corpus')
     parser.add_argument('--dev', required=True, help='Path to dev corpus')
-    parser.add_argument('--output', default='models/ssense_finetuned.pth', help='Output model file')
+    parser.add_argument('--output', default='models/ssense_finetuned.pt', help='Output model file')
     parser.add_argument('--finetuned-model', default='models/', 
                         help='Path to fine-tuned model directory (peft_adapter_*)')
     parser.add_argument('--n-epochs', type=int, default=50, help='Number of epochs')
@@ -227,48 +108,28 @@ def main():
     logger.info(f"Using device: {args.device}")
     logger.info("Chargement du modèle fine-tuné...")
     
-    # Load fine-tuned model
-    finetuned_model, model_name = load_finetuned_model(args.finetuned_model, args.device)
+    # Load fine-tuned model (returns the embedding model without classification head)
+    embedding_model, model_name = load_finetuned_model(args.finetuned_model, args.device)
     
-    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
+
     # Get embedding dimension from model config
-    embedding_dim = finetuned_model.config.hidden_size
+    embedding_dim = embedding_model.config.hidden_size
     logger.info(f"Embedding dimension: {embedding_dim}")
 
     data_prep = SuperSenseDataPreparation(
         tokenizer=tokenizer, 
-        model=finetuned_model,
+        model=embedding_model,
         device=args.device
         )
     
-    # Build label vocabulary from both train and dev to avoid label mismatch
-    logger.info("Building global label vocabulary from train and dev")
-    from lib.conllulib import CoNLLUReader
-    
-    all_labels = set()
-    for file_path in [args.train, args.dev]:
-        sentences = list(CoNLLUReader(open(file_path, 'r', encoding='utf-8')).readConllu())
-        for sent in sentences:
-            for token in sent:
-                if hasattr(token, 'supersenses') and token.supersenses:
-                    all_labels.add(token.supersenses[0])
-    
-    # Create label vocab with all labels
-    label_vocab = {label: idx for idx, label in enumerate(sorted(all_labels))}
-    if '*' not in label_vocab:
-        label_vocab['*'] = len(label_vocab)
-    
-    logger.info(f"Global label vocabulary: {len(label_vocab)} labels")
-    
     # Prepare training data with predefined vocab
     logger.info("Preparing training data")
-    train_embeddings, train_labels, _ = data_prep.prepare_data(args.train, label_vocab=label_vocab)
+    train_embeddings, train_labels, label_vocab = data_prep.prepare_data(args.train)
     
     # Prepare dev data with same vocab
     logger.info("Preparing dev data")
-    dev_embeddings, dev_labels, _ = data_prep.prepare_data(args.dev, label_vocab=label_vocab)
+    dev_embeddings, dev_labels, _ = data_prep.prepare_data(args.dev)
     
     logger.info(f"Training samples: {len(train_labels)}")
     logger.info(f"Dev samples: {len(dev_labels)}")
@@ -283,7 +144,6 @@ def main():
         [dev_embeddings], [dev_labels],
         batch_size=args.batch_size, shuffle=False
     )
-
     
     # Initialize classifier
     logger.info("Initializing classifier")
@@ -311,18 +171,18 @@ def main():
     label_vocab_dict = dict(label_vocab)
     
     checkpoint = {
-        'model_state': model.state_dict(),
+        'model_state': model.state_dict(),  # MLP weights
+        'embedding_model_state': embedding_model.state_dict(),  # Fine-tuned encoder weights
         'label_vocab': label_vocab_dict,
         'embedding_dim': embedding_dim,
         'num_labels': len(label_vocab),
         'dropout': args.dropout,
         'model_name': model_name,
-        'finetuned_model_path': args.finetuned_model 
+        'is_finetuned': True  # Flag to indicate this is a fine-tuned model
     }
     
     torch.save(checkpoint, args.output)
     logger.info(f"Model saved to {args.output}")
-    logger.info(f"Fine-tuned model path saved: {args.finetuned_model}")
 
 
 if __name__ == '__main__':
