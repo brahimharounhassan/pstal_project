@@ -191,7 +191,7 @@ def train_final_model(
         all_labels = []
         
         with torch.no_grad():
-            for batch in tqdm(dev_loader, desc="Validation", colour="orange", leave=False, ncols=80):
+            for batch in tqdm(dev_loader, desc="Validation", colour="yellow", leave=False, ncols=80):
                 input_ids, attention_mask, labels = [x.to(device) for x in batch]
                 
                 with autocast(device_type=device):
@@ -496,7 +496,7 @@ if __name__ == "__main__":
             'model_name': model_name,
             'label2id': train_data_prep.label2id,
             'id2label': train_data_prep.id2label,
-            'target_upos': TARGET_UPOS,
+            'target_upos': list(TARGET_UPOS),  # Convert set to list for JSON serialization
             'merged': False,
             'lora_format': True,
             'timestamp': timestamp,
