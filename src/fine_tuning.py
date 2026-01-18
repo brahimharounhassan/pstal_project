@@ -20,6 +20,7 @@ from sklearn.metrics import f1_score, accuracy_score, classification_report
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datetime import datetime
+import torch.nn as nn
 import torch
 import numpy as np
 import json
@@ -65,6 +66,25 @@ def train_final_model(
     Train final model with best hyperparameters.
     """
 
+
+    def find_lora_target_modules(model):
+        valid_names = {
+            "query", "key", "value",
+            "query_proj", "key_proj", "value_proj",
+            "q_proj", "k_proj", "v_proj",
+        }
+
+        target_modules = set()
+
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                last = name.split(".")[-1].lower()
+                if last in valid_names:
+                    target_modules.add(last)
+
+        return sorted(target_modules)
+
+
     # Load model config
     config = AutoConfig.from_pretrained(model_name)
     config.num_labels = num_labels
@@ -76,7 +96,7 @@ def train_final_model(
     lora_config = LoraConfig(
         r=best_hyperparameters['r'],
         lora_alpha=best_hyperparameters.get('lora_alpha', best_hyperparameters['r'] * 2),
-        target_modules=["query", "value", "key"],
+        target_modules=find_lora_target_modules(base_model),
         lora_dropout=best_hyperparameters['lora_dropout'],
         bias="none",
         task_type="TOKEN_CLS",
