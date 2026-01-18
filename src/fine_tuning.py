@@ -116,6 +116,13 @@ def train_final_model(
         num_training_steps=total_steps
     )
 
+    tmp = model_name.split("/")[-1]
+    if "-" in tmp:
+        tmp = tmp.replace("-", "_")
+    if "." in tmp:
+        tmp = tmp.replace(".", "_")
+    model_name_safe = tmp
+
     # Mixed precision
     scaler = GradScaler()
 
@@ -136,7 +143,7 @@ def train_final_model(
     training_start_timestamp = datetime.now().isoformat()
     logger.info(f"Fine-tuning started - {epochs} epochs max")
 
-
+    
     logger.info(f"Training start device: {device}")
     
     Path(CHECKPOINT_PATH).mkdir(parents=True, exist_ok=True)
@@ -236,7 +243,7 @@ def train_final_model(
 
             # Save checkpoint in PeftModel adapter format
             if best_model_fname is None:
-                best_model_fname = CHECKPOINT_PATH / "best_model_checkpoint"
+                best_model_fname = CHECKPOINT_PATH / f"best_model_checkpoint_{model_name_safe}"
             
             logger.info(f"Saving checkpoint: epoch {epoch+1}, Accuracy={val_accuracy:.4f}, F1 macro={val_f1_macro:.4f}")
             
@@ -311,13 +318,14 @@ def train_final_model(
 
     Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
     
-    np.save(OUTPUT_PATH / "train_losses.npy", np.array(train_losses))
-    np.save(OUTPUT_PATH / "val_losses.npy", np.array(val_losses))
-    np.save(OUTPUT_PATH / "val_f1_scores_macro.npy", np.array(val_f1_scores_macro))
-    np.save(OUTPUT_PATH / "val_f1_scores_weighted.npy", np.array(val_f1_scores_weighted))
-    np.save(OUTPUT_PATH / "val_accuracies.npy", np.array(val_accuracies))
-    np.save(OUTPUT_PATH / "learning_rates.npy", np.array(learning_rates))
 
+
+    np.save(OUTPUT_PATH / f"{model_name_safe}_train_losses.npy", np.array(train_losses))
+    np.save(OUTPUT_PATH / f"{model_name_safe}_val_losses.npy", np.array(val_losses))
+    np.save(OUTPUT_PATH / f"{model_name_safe}_val_f1_scores_macro.npy", np.array(val_f1_scores_macro))
+    np.save(OUTPUT_PATH / f"{model_name_safe}_val_f1_scores_weighted.npy", np.array(val_f1_scores_weighted))
+    np.save(OUTPUT_PATH / f"{model_name_safe}_val_accuracies.npy", np.array(val_accuracies))
+    np.save(OUTPUT_PATH / f"{model_name_safe}_learning_rates.npy", np.array(learning_rates))
     # Load best model
     if best_model_fname and best_model_fname.exists():
         from peft import PeftModel
@@ -448,11 +456,17 @@ if __name__ == "__main__":
         )
 
         Path(MODEL_PATH).mkdir(parents=True, exist_ok=True)
-        
+        tmp = model_name.split("/")[-1]
+        if "-" in tmp:
+            tmp = tmp.replace("-", "_")
+        if "." in tmp:
+            tmp = tmp.replace(".", "_")
+
+        model_name_safe = tmp
         # Save LoRA model with PeftModel format (adapters only)
         logger.info("Saving LoRA model with PeftModel format...")
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        final_model_dir = Path(MODEL_PATH) / f"peft_adapter_{timestamp}"
+        final_model_dir = Path(MODEL_PATH) / f"peft_adapter_{model_name_safe}_{timestamp}"
         
         # Save LoRA adapters and base model config
         model.save_pretrained(final_model_dir)
