@@ -35,13 +35,13 @@
   "revision": null,
   "target_modules": [
     "query",
-    "key",
-    "value"
+    "value",
+    "key"
   ],
   "target_parameters": null,
   "task_type": "TOKEN_CLS",
   "trainable_token_indices": null,
-  "use_dora": true,
+  "use_dora": false,
   "use_qalora": false,
   "use_rslora": false
 }

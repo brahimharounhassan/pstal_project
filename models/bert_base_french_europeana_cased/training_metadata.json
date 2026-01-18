@@ -22,7 +22,7 @@
     }
   },
   "num_labels": 25,
-  "model_name": "almanach/camembert-base",
+  "model_name": "dbmdz/bert-base-french-europeana-cased",
   "label2id": {
     "*": 0,
     "Act": 1,
@@ -78,20 +78,20 @@
     "24": "Tops"
   },
   "target_upos": [
-    "PROPN",
     "NOUN",
-    "NUM"
+    "NUM",
+    "PROPN"
   ],
   "merged": false,
   "lora_format": true,
-  "timestamp": "2026-01-17_15-19-09",
+  "timestamp": "2026-01-18_10-34-20",
   "training_device_start": "cuda",
   "training_device_end": "cuda:0",
   "training_device_changed": true,
-  "training_start_time": "2026-01-17T14:41:22.126851",
-  "training_end_time": "2026-01-17T15:19:08.826382",
-  "training_duration_seconds": 2266.6995327472687,
-  "training_duration_formatted": "37min 46s",
-  "best_epoch": 66,
-  "best_accuracy": 0.88205499276411
+  "training_start_time": "2026-01-18T10:10:23.754823",
+  "training_end_time": "2026-01-18T10:34:18.342424",
+  "training_duration_seconds": 1434.5876019001007,
+  "training_duration_formatted": "23min 54s",
+  "best_epoch": 42,
+  "best_accuracy": 0.8596237337192475
 }

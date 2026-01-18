@@ -3,7 +3,7 @@
   "alpha_pattern": {},
   "arrow_config": null,
   "auto_mapping": null,
-  "base_model_name_or_path": "almanach/camembert-base",
+  "base_model_name_or_path": "dbmdz/bert-base-french-europeana-cased",
   "bias": "none",
   "corda_config": null,
   "ensure_weight_tying": false,
@@ -34,9 +34,9 @@
   "rank_pattern": {},
   "revision": null,
   "target_modules": [
+    "value",
     "query",
-    "key",
-    "value"
+    "key"
   ],
   "target_parameters": null,
   "task_type": "TOKEN_CLS",

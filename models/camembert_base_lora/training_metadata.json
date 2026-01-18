@@ -78,20 +78,20 @@
     "24": "Tops"
   },
   "target_upos": [
+    "NUM",
     "PROPN",
-    "NOUN",
-    "NUM"
+    "NOUN"
   ],
   "merged": false,
   "lora_format": true,
-  "timestamp": "2026-01-17_15-19-09",
+  "timestamp": "2026-01-17_14-22-12",
   "training_device_start": "cuda",
   "training_device_end": "cuda:0",
   "training_device_changed": true,
-  "training_start_time": "2026-01-17T14:41:22.126851",
-  "training_end_time": "2026-01-17T15:19:08.826382",
-  "training_duration_seconds": 2266.6995327472687,
-  "training_duration_formatted": "37min 46s",
-  "best_epoch": 66,
-  "best_accuracy": 0.88205499276411
+  "training_start_time": "2026-01-17T14:09:06.400122",
+  "training_end_time": "2026-01-17T14:22:12.017770",
+  "training_duration_seconds": 785.6176488399506,
+  "training_duration_formatted": "13min 05s",
+  "best_epoch": 33,
+  "best_accuracy": 0.8650506512301013
 }

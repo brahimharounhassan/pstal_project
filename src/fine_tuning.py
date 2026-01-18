@@ -69,9 +69,10 @@ def train_final_model(
 
     def find_lora_target_modules(model):
         valid_names = {
-            "query", "key", "value",
-            "query_proj", "key_proj", "value_proj",
-            "q_proj", "k_proj", "v_proj",
+            "query", "key", "value", # BERT/XLM-R
+            "query_proj", "key_proj", "value_proj", # DeBERTa
+            "q_proj", "k_proj", "v_proj", # LLaMA / Mistral / BLOOM            
+            "q_lin", "k_lin", "v_lin" # DistilBERT
         }
 
         target_modules = set()
