@@ -22,7 +22,7 @@ from transformers import (
 from src.utils import TuningDataPreparation, setup_logger
 from configs.config import *
 
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, TaskType, get_peft_model
 from torch.optim import AdamW
 from torch.amp import GradScaler, autocast
 from sklearn.metrics import f1_score, accuracy_score
@@ -95,7 +95,7 @@ def train_eval_model(
             target_modules=["query", "value", "key"],
             lora_dropout=dropout,
             bias="none",
-            task_type="TOKEN_CLS",
+            task_type=TaskType.TOKEN_CLS,
             use_dora=dora
         )
 

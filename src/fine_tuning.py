@@ -13,7 +13,7 @@ workspace_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(workspace_root))
 
 from transformers import AutoConfig, AutoModel, AutoModelForTokenClassification, AutoTokenizer, get_linear_schedule_with_warmup
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, TaskType
 from torch.optim import AdamW
 from torch.amp import GradScaler, autocast
 from sklearn.metrics import f1_score, accuracy_score, classification_report
@@ -79,11 +79,31 @@ def train_final_model(
 
         for name, module in model.named_modules():
             if isinstance(module, nn.Linear):
-                last = name.split(".")[-1].lower()
-                if last in valid_names:
+                last = name.split(".")[-1]
+                if last in valid_names or last.lower() in valid_names:
                     target_modules.add(last)
-
-        return sorted(target_modules)
+        
+        if not target_modules:
+            logger.warning("No target modules found with standard names, searching for attention patterns...")
+            for name, module in model.named_modules():
+                if isinstance(module, nn.Linear):
+                    # Check if module name contains attention-related keywords
+                    if any(keyword in name.lower() for keyword in ['query', 'key', 'value', 'q_lin', 'k_lin', 'v_lin']):
+                        last = name.split(".")[-1]
+                        target_modules.add(last)
+                        logger.info(f"Found attention module: {name}")
+        
+        if not target_modules:
+            logger.warning("Still no modules found, using all attention linear layers...")
+            for name, module in model.named_modules():
+                if isinstance(module, nn.Linear) and 'attention' in name.lower():
+                    last = name.split(".")[-1]
+                    target_modules.add(last)
+                    logger.info(f"Found attention linear layer: {name}")
+        
+        result = sorted(target_modules) if target_modules else None
+        logger.info(f"Target modules for LoRA: {result}")
+        return result
 
 
     # Load model config
@@ -100,7 +120,7 @@ def train_final_model(
         target_modules=find_lora_target_modules(base_model),
         lora_dropout=best_hyperparameters['lora_dropout'],
         bias="none",
-        task_type="TOKEN_CLS",
+        task_type=TaskType.TOKEN_CLS,
         use_dora= True, #best_hyperparameters.get('use_dora', False),
         use_rslora=False
     )
