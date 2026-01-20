@@ -97,12 +97,12 @@ class TuningDataPreparation:
         attention_masks = []
         all_labels = []
 
-        for i, words in self.word_sent.items():
+        for i, sent in self.word_sent.items():
             supersense_labels = self.sense_sent[i]
             upos_labels = self.upos_sent[i]
 
-            encoding = tokenizer(
-                words,
+            tok_sent = tokenizer(
+                sent,
                 is_split_into_words=True,
                 add_special_tokens=True,
                 padding="max_length",
@@ -112,11 +112,11 @@ class TuningDataPreparation:
                 return_tensors="pt"
             )
 
-            input_ids.append(encoding["input_ids"])
-            attention_masks.append(encoding["attention_mask"])
+            input_ids.append(tok_sent["input_ids"])
+            attention_masks.append(tok_sent["attention_mask"])
 
             # Align labels with subword tokens
-            word_ids = encoding.word_ids()
+            word_ids = tok_sent.word_ids()
             labels = []
             previous_word_id = None
 

@@ -6,42 +6,37 @@ __pycache__/
 *.so
 .Python
 
-# Virtual env.
+# Virtual env
 .venv/
 venv/
 env/
 ENV/
 
-# PyTorch models
+# PyTorch models (keep only best checkpoints)
 *.pt
 *.pth
 *.ckpt
+!models/checkpoints/best_*/
 
-# Predictions et accuracy files
-*.pred
-*.acc
+# Model directories (comment out to keep local models)
+# models/*/
+
+# Predictions
 predictions/*.conllu
-
-# LaTeX
-*.aux
-*.log
-*.out
-*.synctex.gz
 
 # Logs
 logs/
 *.log
 
-# Outputs temporaires
+# Outputs
 outputs/*.npy
 outputs/*.png
-
-# Checkpoints (garder les meilleurs seulement)
-# checkpoints/
+outputs/*.html
+outputs/*.json
 
 # Optuna database
-optuna_study.db
-optuna_study.db-journal
+*.db
+*.db-journal
 
 # IDE
 .vscode/
@@ -54,22 +49,16 @@ optuna_study.db-journal
 .DS_Store
 Thumbs.db
 
-
-tp1/
-tp2/
-tp3/
-tp4/
-tp5/
-
-tmp/
-enonce/
-
-enonce/*
+# Jupyter
 *.ipynb
-*.md
-*.html
+.ipynb_checkpoints/
 
+# Data (uncomment if data should not be tracked)
+# data/
 
-# peft_adapter/*
-# models/*
-# outputs/*
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+notes.md

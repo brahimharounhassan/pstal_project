@@ -104,20 +104,58 @@ def main():
     if is_finetuned:
         logger.info("Using FINE-TUNED embeddings")
         
-        model = AutoModel.from_pretrained(model_name).to(args.device)
-        model.load_state_dict(checkpoint['embedding_model_state'], strict=False)
+        try:
+            model = AutoModel.from_pretrained(model_name, use_safetensors=True).to(args.device)
+            model.load_state_dict(checkpoint['embedding_model_state'], strict=False)
+        except torch.cuda.OutOfMemoryError:
+            logger.warning(f"GPU out of memory, falling back to CPU")
+            torch.cuda.empty_cache()
+            args.device = 'cpu'
+            model = AutoModel.from_pretrained(model_name, use_safetensors=True).to(args.device)
+            model.load_state_dict(checkpoint['embedding_model_state'], strict=False)
+        
         model.eval()
-        logger.info("Fine-tuned encoder loaded locally.")
+        logger.info(f"Fine-tuned encoder loaded on {args.device}")
     else:
         logger.info("Using BASELINE frozen embeddings")
         
-        # Load baseline frozen model
-        model = AutoModel.from_pretrained(model_name).to(args.device)
+        try:
+            model = AutoModel.from_pretrained(model_name, use_safetensors=True).to(args.device)
+        except torch.cuda.OutOfMemoryError:
+            logger.warning(f"GPU out of memory, falling back to CPU")
+            torch.cuda.empty_cache()
+            args.device = 'cpu'
+            model = AutoModel.from_pretrained(model_name, use_safetensors=True).to(args.device)
+        
         model.eval()
-        logger.info("Baseline model loaded from HuggingFace")
+        logger.info(f"Baseline model loaded on {args.device}")
     
     # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = None
+    if is_finetuned:
+        model_base = Path(model_name).name.replace('-', '_')  # microsoft/deberta-v3-base
+        model_dirs = [
+            Path('models') / model_base, 
+            Path('models') / Path(model_name).name,
+            Path('models') / model_name.replace('/', '_'),  
+            ]
+        
+        for model_dir in model_dirs:
+            if model_dir.exists() and (model_dir / 'tokenizer_config.json').exists():
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+                    logger.info(f"Loaded tokenizer from local directory: {model_dir}")
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to load tokenizer from {model_dir}: {e}")
+                    continue
+    
+    # Load from HuggingFace
+    if tokenizer is None:
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+        except:
+            tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
     
     # Load classifier
     classifier = SuperSenseClassifier(

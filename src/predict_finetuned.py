@@ -9,7 +9,6 @@ import argparse
 from transformers import AutoTokenizer, AutoConfig, AutoModelForTokenClassification
 from peft import PeftModel
 from tqdm import tqdm
-import subprocess
 import json
 
 from configs.config import *

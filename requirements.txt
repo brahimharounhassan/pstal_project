@@ -6,11 +6,13 @@ optuna>=3.5.0
 transformers>=4.35.0
 peft>=0.7.0
 conllu>=4.5.0
+safetensors>=0.4.0
 
 PyYAML>=6.0
 tqdm>=4.65.0
 
 matplotlib>=3.7.0
-plotly
+plotly>=5.0.0
 
-nbformat
+# For Python 3.12+, use PyTorch with safetensors support to avoid security vulnerabilities
+# Recommended: PyTorch >= 2.6 with CUDA 12.1 for optimal compatibility

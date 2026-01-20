@@ -5,17 +5,14 @@ Training script for the super-sense classifier with contextual embeddings.
 
 import sys
 from pathlib import Path
-from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.utils import SuperSenseDataPreparation, setup_logger
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import argparse
-from transformers import AutoTokenizer, AutoConfig, AutoModel, AutoModelForTokenClassification
-from peft import LoraConfig, get_peft_model, PeftModel
+from transformers import AutoTokenizer, AutoConfig, AutoModelForTokenClassification
+from peft import PeftModel
 import json
 
 from model_ssense import SuperSenseClassifier
@@ -36,10 +33,8 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     metadata_file = finetuned_path / "training_metadata.json"
     
     if not adapter_config_file.exists() and not metadata_file.exists():
-        # Find all peft_adapter_* directories
         peft_dirs = list(finetuned_path.glob("peft_adapter*"))
         
-        # get the most recent adapter directory
         peft_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         finetuned_path = peft_dirs[0]
         logger.info(f"Loading fine-tuned model from: {finetuned_model_path}/{finetuned_path.name}")
@@ -59,9 +54,11 @@ def load_finetuned_model(finetuned_model_path: str, device: str):
     base_config = AutoConfig.from_pretrained(model_name)
     base_config.num_labels = num_labels
     
+    # Load base model  
     base_model = AutoModelForTokenClassification.from_pretrained(
         model_name,
-        config=base_config
+        config=base_config,
+        use_safetensors=True
     )
     
     # Load LoRA adapters
@@ -118,7 +115,14 @@ def main():
     # Load fine-tuned model (returns the embedding model without classification head)
     embedding_model, model_name = load_finetuned_model(args.finetuned_model, args.device)
     
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # Load tokenizer from local directory if available, otherwise from model_name
+    tokenizer_path = Path(args.finetuned_model)
+    if (tokenizer_path / "tokenizer_config.json").exists():
+        tokenizer = AutoTokenizer.from_pretrained(args.finetuned_model)
+        logger.info(f"Loaded tokenizer from local directory: {args.finetuned_model}")
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        logger.info(f"Loaded tokenizer from model: {model_name}")
 
     # Get embedding dimension from model config
     embedding_dim = embedding_model.config.hidden_size

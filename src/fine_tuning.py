@@ -12,7 +12,7 @@ import argparse
 workspace_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(workspace_root))
 
-from transformers import AutoConfig, AutoModel, AutoModelForTokenClassification, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer, get_linear_schedule_with_warmup
 from peft import LoraConfig, get_peft_model, TaskType
 from torch.optim import AdamW
 from torch.amp import GradScaler, autocast
