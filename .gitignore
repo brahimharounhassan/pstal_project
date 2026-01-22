@@ -22,17 +22,17 @@ ENV/
 # models/*/
 
 # Predictions
-predictions/*.conllu
+# predictions/*.conllu
 
 # Logs
 logs/
 *.log
 
 # Outputs
-outputs/*.npy
-outputs/*.png
-outputs/*.html
-outputs/*.json
+# outputs/*.npy
+# outputs/*.png
+# outputs/*.html
+# outputs/*.json
 
 # Optuna database
 *.db
@@ -61,4 +61,3 @@ tmp/
 temp/
 *.tmp
 
-notes.md
